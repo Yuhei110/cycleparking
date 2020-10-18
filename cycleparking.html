@@ -371,9 +371,25 @@ summary {
 
 <div id="read-me" class="section level2">
 <h2>Read me</h2>
-<div id="input-data" class="section level4">
-<h4>input data</h4>
-<p>census.rda is a census data of 2011 subsetting by Greater London</p>
+<div id="input-data" class="section level3">
+<h3>input data</h3>
+<p>census.rda: A census data of 2011 subsetting by Greater London. route.rda: route data obtained from PCT. parking.rda: parking data merged from CID and OSM. lsoa_msoa.rda: LSOA and MSOA link.</p>
+<p>##Load data</p>
+<pre class="r"><code># Load census data.
+census = paste(getwd(),&quot;/data/census.rda&quot;, sep = &quot;&quot;)
+load(census)
+
+# Load route data.
+route = paste(getwd(),&quot;/data/route.rda&quot;, sep = &quot;&quot;)
+load(route)
+
+# Load parking data.
+parking = paste(getwd(),&quot;/data/parking.rda&quot;, sep = &quot;&quot;)
+load(parking)
+
+# Load lsoa_msoa data.
+lsoa_msoa = paste(getwd(),&quot;/data/lsoa_msoa.rda&quot;, sep = &quot;&quot;)
+load(lsoa_msoa)</code></pre>
 </div>
 </div>
 

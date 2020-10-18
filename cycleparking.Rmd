@@ -10,4 +10,5 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Read me
-
+### input data
+census.rda: A census data of 2011 subsetting by Greater London
