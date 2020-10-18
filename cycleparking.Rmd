@@ -7,8 +7,172 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+# Change language settings.
+Sys.setenv(LANG = "en")
+Sys.setlocale("LC_ALL","English")
+
+# Load necessary packages.
+library(dplyr)
 ```
 
 ## Read me
 ### input data
-census.rda: A census data of 2011 subsetting by Greater London
+census.rda: A census data of 2011 subsetting by Greater London.
+route.rda: route data obtained from PCT.
+parking.rda: parking data merged from CID and OSM.
+lsoa_msoa.rda: LSOA and MSOA link.
+
+## Load data
+```{r}
+# Load census data.
+census = paste(getwd(),"/data/census.rda", sep = "")
+load(census)
+
+# Load route data.
+route = paste(getwd(),"/data/route.rda", sep = "")
+load(route)
+
+# Load parking data.
+parking = paste(getwd(),"/data/parking.rda", sep = "")
+load(parking)
+
+# Load lsoa_msoa data.
+lsoa_msoa = paste(getwd(),"/data/lsoa_msoa.rda", sep = "")
+load(lsoa_msoa)
+```
+
+## Join MSOA code to census
+```{r}
+# Join Origin MSOA
+census = left_join(census, lsoa_msoa, by = c("olsoa" = "lsoa"))
+any(is.na(census$msoa)) # False, join successful.
+census$omsoa = census$msoa
+census = census[,c("olsoa","omsoa","dlsoa","all","bicycle")]
+
+# Join Destination MSOA
+census = left_join(census, lsoa_msoa, by = c("dlsoa" = "lsoa"))
+any(is.na(census$msoa)) # False, join successful.
+census$dmsoa = census$msoa
+census = census[,c("olsoa","omsoa","dlsoa","dmsoa","all","bicycle")]
+```
+
+## Join MSOA code to parking
+```{r}
+parking = left_join(parking, lsoa_msoa, by = c("lsoa" = "lsoa"))
+any(is.na(parking$msoa)) # False, join successful.
+parking = parking[,c("lsoa","msoa","space")]
+```
+
+## Aggregate census' all and bicycle by MSOA.
+```{r}
+census2 = 
+  census %>%
+  group_by(omsoa,dmsoa)%>%
+  summarise(all = sum(all), bicycle = sum(bicycle))
+
+sum(census2$all) == sum(census$all) #TRUE, successful.
+```
+
+## Add distance and hilliness to census2.
+```{r}
+# Delete rows with rf_dist_km and rf_avslope_perc are NA. These NA rows have Other or OD0000003 written on geo_code2 column.
+route = 
+  route %>%
+  filter(!is.na(rf_dist_km))
+any(is.na(route)) #FALSE, successful.
+
+# CREATE JOIN ID.
+# 1. Create join ID for Origin = geo_code1, Destination = geo_code2, ID = OD
+route12 = route
+route12$id = paste(route$geo_code1, route$geo_code2)
+nrow(route12) #308782
+
+# 2. Create join ID for Origin = geo_code2, Destination = geo_code1, ID = OD
+route21 = route
+route21$id = paste(route$geo_code2, route$geo_code1)
+nrow(route21) #308782
+
+# 3. Combine two dfs.
+route = rbind(route12,route21)
+nrow(route) #617564
+
+# Remove duplication of ID which are intra-zonal OD pairs. Avoid adding duplicated rows when joining to census data.
+route = 
+  route %>% distinct(id, .keep_all = TRUE)
+
+# Delete unnecessary column
+route = route[,c("id", "rf_dist_km", "rf_avslope_perc")]
+```
+
+## Join distance and hilliness to census2.
+```{r}
+# Create join id for Census data.
+census2$id = paste(census2$omsoa, census2$dmsoa)
+
+# Join route data.
+census2 = left_join(census2, route, by = "id")
+
+# Delete id column
+census2 = 
+  census2 %>%
+  select(-id)
+
+any(is.na(census2)) #TRUE
+  census2 %>%
+  filter(is.na(rf_dist_km))
+```
+
+## Check census data.
+```{r}
+# Check if there is any No fixed place data on Census. -> No.
+nrow(census2) #601902 rows.
+
+census2 %>%
+  mutate(First3D = substring(dmsoa,1,3)) %>% # Obtain first three letters of destination MSOA.
+  filter(First3D == "E02") # Check if all rows are E02. 601902 rows Correct.
+
+census2 %>%
+  mutate(First3O = substring(omsoa,1,3)) %>% # Obtain first three letters of origin MSOA.
+  group_by(First3O)%>%
+  summarise(n(),sum(all),sum(bicycle)) # There are 4570 (bicycle n=97) commuters come from Wales.
+
+# Identify intra-zonal trip.
+census2$intra = ifelse(census2$omsoa == census2$dmsoa, TRUE, FALSE)
+census2 %>%
+  filter(intra == TRUE) %>%
+  nrow() #983 rows
+
+# Excluded rows?
+census2$excluded = ifelse(is.na(census2$rf_dist_km), TRUE, FALSE)
+```
+
+## Check how many trips are excluded and how many are intra/inter zonal trips. (Table 6. Number of Commuters in/to Greater London) 
+```{r}
+knitr::opts_chunk$set(eval = FALSE)
+
+# Total amount of travel to GL before excluding any trips.
+sum(census2$all) # 3715982
+
+# Intra and Inter zonal trips
+census2 %>%
+  group_by(intra) %>%
+  summarise(n(),sum(all), sum(bicycle))
+
+# Excluded and Included to the study.
+census2 %>%
+  group_by(excluded) %>%
+  summarise(n(),sum(all), sum(bicycle))
+
+# Intra/Inter and Exclude/Include.
+census2 %>%
+  group_by(excluded, intra) %>%
+  summarise(n(),sum(all), sum(bicycle))
+
+219452/nrow(census2)*100      # 36% OD pairs
+570254/sum(census2$all)*100   # 15% all commuters
+4017/sum(census2$bicycle)*100 # 3%  cycle commuters
+```
+
+
+
