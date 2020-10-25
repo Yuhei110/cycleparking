@@ -14,6 +14,8 @@ Sys.setlocale("LC_ALL","English")
 
 # Load necessary packages.
 library(dplyr)
+library(ggplot2)
+library(e1071) #for calculating skewness.
 ```
 
 ## Read me
@@ -36,6 +38,10 @@ load(route)
 # Load parking data.
 parking = paste(getwd(),"/data/parking.rda", sep = "")
 load(parking)
+
+# Load area data.
+area = paste(getwd(),"/data/area.rda", sep = "")
+load(area)
 
 # Load lsoa_msoa data.
 lsoa_msoa = paste(getwd(),"/data/lsoa_msoa.rda", sep = "")
@@ -174,5 +180,720 @@ census2 %>%
 4017/sum(census2$bicycle)*100 # 3%  cycle commuters
 ```
 
+## BCG construction Step 1: Eliminating >30km od and CalculateGoDutch propensity
+```{r}
+# Eliminate >30km OD pairs
+census2 =
+  census2 %>% #601902 od pairs
+  filter(excluded == FALSE) %>% #382450 od pairs
+  select(-c("excluded"))
+
+# Calculate parameter for Go Dutch.
+census2 =
+  census2 %>%
+  mutate(logit_gd = 
+           -3.959 + 
+           (-0.5963 * rf_dist_km) + 
+           (1.866 * sqrt(rf_dist_km)) + 
+           (0.008050 * rf_dist_km^2) +
+           (-0.2710 * rf_avslope_perc) + 
+           (0.009394 * rf_dist_km*rf_avslope_perc) + 
+           (-0.05135 * sqrt(rf_dist_km) *rf_avslope_perc) +
+           2.523 +
+           (-0.07626*rf_dist_km)
+         ) 
+
+# Calculate GD propensity.
+census2$GDpct = exp(census2$logit_gd) / (1 + exp(census2$logit_gd))
+```
+
+## BCG construction Step 2: Calculate GoDutch number of cycle commuters for each OD pair.
+```{r}
+# Calculate future cycle commuter no. based on Go Dutch scenario.
+census2 =
+  census2%>%
+  mutate(bicycle_gd = all*GDpct)
+
+# Check
+census2 %>%
+  mutate(check = bicycle_gd > bicycle) %>%
+  group_by(check) %>%
+  summarise(n())
+#FALSE	22467	OD pairs have already achieved Dutch propensity.		
+#TRUE	359983	
+
+census2 %>%
+  filter(bicycle > bicycle_gd) %>%
+  arrange(desc(bicycle)) %>%
+  nrow() #22467
+
+nrow(census2) #382450
+
+22467/382450 #0.05874493
+
+census2 %>%
+  mutate(OverDutch = ifelse(bicycle > bicycle_gd,TRUE, FALSE)) %>%
+  group_by(OverDutch)%>%
+  summarise(bicycle = sum(bicycle), bicycle_gd = sum(bicycle_gd))
+
+41567- 21290 #20277
+
+# Actual future share is assumed to be unchanged for OD pairs which already achieved the Dutch propensity.
+census2$bicycle_future =
+  ifelse(census2$bicycle_gd > census2$bicycle,
+         census2$bicycle_gd,
+         census2$bicycle)
+
+# Rearrange columns
+names(census2)
+
+census2 = 
+  census2[,c("omsoa","dmsoa","all","bicycle","bicycle_future","bicycle_gd","GDpct","logit_gd","rf_dist_km","rf_avslope_perc","intra")]
+```
+
+## BCG construction Step 3: Aggregate by destination MSOA.
+```{r}
+# Aggregate based on destination MSOA.
+census3 =
+  census2 %>%
+  select(c(1:7))%>%
+  group_by(dmsoa)%>%
+  summarise(all = sum(all),
+            bicycle = sum(bicycle),
+            bicycle_future = sum(bicycle_future),
+            bicycle_gd = sum(bicycle_gd))
+
+# How many MSOAs in GL?
+length(unique(census2$dmsoa)) #983
+
+# Check
+sum(census2$all) == sum(census3$all) # TRUE
+sum(census2$bicycle) == sum(census3$bicycle) # TRUE
+sum(census2$bicycle_future) == sum(census3$bicycle_future) # TRUE
+sum(census2$bicycle_gd) == sum(census3$bicycle_gd) # TRUE
+```
+
+## BCG construction Step 4: Construct BCG by mean values
+```{r}
+# Calculate current share for each MSOA
+census3$CurrentShare = census3$bicycle/census3$all
+
+# Calculate future share for each LSOA.
+census3$FutureShare = census3$bicycle_future/census3$all
+
+# Calculate growth share and add a new column.
+census3$Growth = census3$FutureShare - census3$CurrentShare
+
+# Horizontal axis (Current AT share)
+# If the share is lower than the mean, 1 otherwise 2.
+
+BCG_x = ifelse(
+  census3$CurrentShare < mean(census3$CurrentShare),
+  1,2)
+
+# Vertical axis (Growth AT share)
+# If the share is lower than the mean, 1 otherwise 2.
+
+BCG_y = ifelse(
+  census3$Growth < mean(census3$Growth),
+  1,2)
+
+# Combine the above two.
+BCG = paste(BCG_x,BCG_y,sep="")
+
+# Rename the codes to BCG terms.
+BCG = recode(BCG, 
+              '11' = "Problematic", 
+              '12' = "Questionable",
+              '21' = "Achieved",
+              '22' = "Promising")
+
+# Add a column.
+census3$BCG = BCG
+
+census3$BCG = factor(census3$BCG, 
+                levels = c("Promising","Achieved","Questionable","Problematic"))
+
+# Current, Future Share and growth max.
+max(census3$CurrentShare) #0.148398
+max(census3$FutureShare) #0.3400569
+max(census3$Growth) #0.3242483
+```
+
+## Parking 1: Aggregate parking space for each MSOA
+```{r}
+# the updated parking data
+parking
+sum(parking$space) #140788
+
+# Aggregate parking capacity based on MSOA
+parking2 =
+  parking %>%
+  select(msoa, space) %>%
+  group_by(msoa) %>%
+  summarise(space = sum(space))
+
+sum(parking2$space) == sum(parking$space) #140788 TRUE
+```
+
+## Parking 2: Join parking space to census
+```{r}
+census3 = left_join(census3, parking2, by = c("dmsoa" = "msoa"))
+sum(census3$space) == sum(parking2$space) #TRUE Successful!
+```
+
+# Parking Occupancy Rate: por
+
+4 Categories:
+Surplus  : Less than 50% occupancy rate
+Ideal    : 50% and more and 80% and less occupancy rate
+Threshold: More than 80% and 100% and less occupancy rate
+Shortage : More than 100% occupancy rate
+
+Examples:
+Surplus  : bicycle= 30, parking=100 - Less than 50% occupancy rate
+Ideal    : bicycle= 70, parking=100 - 50% and more and 80% and less occupancy rate
+Threshold: bicycle= 90, parking=100 - More than 80% and 100% and less occupancy rate
+Shortage : bicycle=110, parking=100 - More than 100% occupancy rate
+
+Exceptions:
+Case 1   : bicycle= 0, parking=100 -> Surplus  (n = 22 current)
+Case 2   : bicycle=10, parking=0   -> Shortage (n = 1  current)
+Case 3   : bicycle= 0, parking=0   -> Shortage (n = 0  observation)
+
+## Current Occupancy Rate and Category
+```{r}
+# Current Occupancy Rate
+census3$porCurrent = census3$bicycle / census3$space
+
+census3%>%
+  filter(bicycle == 0)
+census3%>%
+  filter(space == 0)
+
+# Categorise into 4.
+## 2011 Occupancy Rate
+census3 = 
+  census3 %>%
+    mutate(porCurrentCat = ifelse(porCurrent > 1, "Shortage", 
+                          ifelse(0.8 < porCurrent & porCurrent <= 1, "Threshold",
+                                 ifelse(0.5 <= porCurrent & porCurrent <= 0.8, "Ideal",
+                                        ifelse(0.5 > porCurrent, "Surplus",NA))))
+           )
+census3
+```
+
+## Future Occupancy Rate and Category
+```{r}
+# Future Occupancy Rate
+census3$porFuture = census3$bicycle_future / census3$space
+
+# Categorise into 4.
+## 2011 Occupancy Rate
+census3 = 
+  census3 %>%
+    mutate(porFutureCat = ifelse(porFuture > 1, "Shortage", 
+                          ifelse(0.8 < porFuture & porFuture <= 1, "Threshold",
+                                 ifelse(0.5 <= porFuture & porFuture <= 0.8, "Ideal",
+                                        ifelse(0.5 > porFuture, "Surplus",NA))))
+           )
+
+census3
+```
+
+## por checking
+```{r}
+### Check data
+census3 %>%
+  group_by(porCurrentCat)%>%
+  summarise(n())
+
+census3 %>%
+  group_by(porFutureCat)%>%
+  summarise(n())
+
+nrow(census3) #983
+
+census3 %>%
+  group_by(porCurrentCat)%>%
+  summarise(n = n())%>%
+  select(n)%>%
+  sum() #983
+
+census3 %>%
+  group_by(porFutureCat)%>%
+  summarise(n = n())%>%
+  select(n)%>%
+  sum() #983
+```
+
+## Reorder factor of por categorisation
+```{r}
+# Convert to factor.
+census3$porCurrentCat = as.factor(census3$porCurrentCat)
+census3$porFutureCat  = as.factor(census3$porFutureCat)
+
+# Check levels
+levels(census3$porCurrentCat)
+levels(census3$porFutureCat)
+#"Ideal"     "Shortage"  "Surplus"   "Threshold"
+
+# Reorder factor levels
+census3$porCurrentCat = factor(census3$porCurrentCat, 
+                levels = c("Surplus","Ideal","Threshold","Shortage"))
+census3$porFutureCat = factor(census3$porFutureCat, 
+                levels = c("Surplus","Ideal","Threshold","Shortage"))
 
 
+# Check levels
+levels(census3$porCurrentCat)
+levels(census3$porFutureCat)
+#"Surplus"   "Ideal"     "Threshold" "Shortage" 
+```
+
+# Figures
+### Figure 9 Histogram of Current and Future Share of Cycle Commuter
+```{r}
+current = data.frame(share = census3$CurrentShare)
+future  = data.frame(share = census3$FutureShare)
+
+current$category = 'Current'
+future$category  = 'Future'
+
+shareCF <- rbind(current, future)
+
+ggplot(shareCF, aes(share, fill = category)) + geom_density(alpha = 0.2)
+
+ggplot(shareCF, aes(share, fill = category)) + 
+  geom_histogram(alpha = 0.2, position = "identity", binwidth = 0.01) +
+  labs(y="Frequency", x = "Current and Future Share of Cycle Commuter")
+```
+
+### Figure 14 Histogram of Growth Share of Cycle Commuter
+```{r}
+# Mean, Median, Max., Min.
+mean(census3$Growth) #0.1950014
+median(census3$Growth) #0.1923137
+max(census3$Growth) #0.3242483
+min(census3$Growth) #0.06974227
+
+# Histogram
+ggplot(census3, aes(x = Growth)) +
+  geom_histogram(position = "identity", 
+                 binwidth = 0.01,
+                 fill = "grey", 
+                 color = "black"
+                 )+
+  labs(y="Frequency", x = "Growth Share of Cycle Commuter")
+```
+
+### Figure 16 Scatter Plot of Growth and Current Share of Cycle Commuter
+```{r}
+BCGcol = c("#368cd3", "#73d87d", "#ffff01", "#ff3b40")
+
+ggplot(census3, aes(x = CurrentShare, y = Growth)) +
+  geom_point(aes(color = BCG), size = 1) +
+  scale_colour_manual(values=BCGcol) + 
+  geom_line(aes(x = mean(CurrentShare))) +
+  geom_line(aes(y = mean(Growth))) +
+  labs(y="Current Share", x = "Growth Share") +
+  labs(colour = "PCTxBCG Category")+
+  labs(y="Growth Share of Cycle Commuter", x = "Current Share of Cycle Commuter")
+
+mean(census3$CurrentShare)*100 #3.563695
+mean(census3$Growth)*100 #19.50014
+```
+
+### Figure 17 Violin Plot of Growth and Current Share of Cycle Commuter
+```{r}
+# Mutate and label data based on current share, categorise into 5.
+vplot= census3 %>%
+  mutate(vplot = ifelse(CurrentShare < 0.03, "0-3%",
+                        ifelse(0.03 <= CurrentShare & CurrentShare < 0.06, "3-6%", 
+                               ifelse(0.06 <= CurrentShare & CurrentShare < 0.09, "6-9%",
+                                      ifelse(0.09 <= CurrentShare & CurrentShare < 0.12, "9-12%",
+                                             ifelse(0.12 <= CurrentShare, "12-15%" , NA)))))
+         )%>%
+  select(CurrentShare, Growth,vplot) 
+
+# Convert to factor.
+vplot$vplot = as.factor(vplot$vplot)
+
+# Reorder factor.
+vplot$vplot = factor(vplot$vplot,
+                     levels = c("0-3%","3-6%","6-9%","9-12%","12-15%"))
+
+ggplot(vplot, aes(x=vplot, y=Growth,  color =vplot)) + 
+  geom_violin() + 
+  geom_jitter(shape=16, position=position_jitter(0.2)) +
+  labs(y="Growth Share of Cycle Commuter", x = "Current Share of Cycle Commuter")
+
+ggplot(vplot, aes(x=vplot, y=Growth,  color =vplot)) + 
+  geom_violin() + 
+  geom_boxplot(width=0.1)+
+  labs(y="Growth Share of Cycle Commuter", x = "Current Share of Cycle Commuter")
+
+
+vplot %>%
+  group_by(vplot)%>%
+  summarise(n= n(), min = min(Growth), max = max(Growth)) %>%
+  mutate(range = max -min)
+```
+
+### Figure 20 Histogram of Parking Space per MSOA
+```{r}
+# Total capacity of parking in Greater London.
+sum(census3$space) #140788
+
+# Mean, Median, Max., Min.
+mean(census3$space) #143.2228
+median(census3$space) #76
+max(census3$space) #3010
+min(census3$space) #0
+sd(census3$space) #222.0242
+skewness(census3$space) #5.320692
+
+# High concentration of parking space on the small numbers of MSOA?
+census3 %>%
+  arrange(desc(space)) %>%
+  select(space)%>%
+    top_n(-983*0.3)%>%
+  sum() #16609
+
+16609/140788  #10  - 12%
+62544/140788  #100 - 44%
+61303/140788  #10% - 44%
+95165/140788  #25% - 68%
+123889/140788 #50% - 88%
+
+6160/140788   #-30% - 4%
+
+# Histogram
+ggplot(census3, aes(x = space)) +
+  geom_histogram(position = "identity", 
+                 binwidth = 10,
+                 fill = "grey", 
+                 color = "black"
+                 )+
+  labs(y="Frequency", x = "Parking Capacity per MSOA")
+```
+
+### Figure 21 Breakdown of Parking Space by No. of Cycle Commuter (left) and Area (right)
+```{r}
+# Join area to census 3.
+census3 = left_join(census3, area, by = c("dmsoa" = "msoa"))
+```
+
+```{r}
+# Categorise into 6 ranges.
+tbd= 
+  census3 %>%
+  mutate(space2 = ifelse(space == 0, "None", 
+                          ifelse(1 <= space & space <= 100, "1-100",
+                                 ifelse(100 < space & space <= 300, "100-300",
+                                        ifelse(300 < space & space <= 500, "300-500",
+                                               ifelse(500 < space & space <= 1000, "500-1000",
+                                                      ifelse(1000 < space,"1000-",NA))))))
+           )
+
+tbd2= tbd %>%
+  group_by(space2)%>%
+  summarise(all = sum(all), bicycle = sum(bicycle),area = sum(area_sqm))
+
+tbd2$space2 = as.factor(tbd2$space2)
+levels(tbd2$space2)
+tbd2$space2 = factor(tbd2$space2, 
+                levels = c("None","1-100","100-300","300-500","500-1000","1000-"))
+
+tbd2$area_kmsq = tbd2$area/1000^2
+tbd2$area_kmsq = as.numeric(tbd2$area_kmsq)
+
+# Size in terms of area
+(1002575971+ 65723076 )/ 1573508480  #0.6789281 by small numbers
+
+31713098 / 1573508480 #0.02015439
+
+# Size in terms of cyclist
+(511+ 21666 )/ 143182  #0.1548868 by small numbers
+sum(tbd2$bicycle)
+45138 / 143182 #0.3152491
+
+  
+
+ggplot(tbd2,aes(x=space2, y = all)) +
+  geom_bar( stat="identity")+
+  labs(y="No. of Commuter by All Modes", x = "Parking Space")
+
+ggplot(tbd2,aes(x=space2, y = bicycle)) +
+  geom_bar( stat="identity")+
+  labs(y="No. of Commuter by Bicycle", x = "Parking Space")
+
+ggplot(tbd2,aes(x=space2, y = area_kmsq)) +
+  geom_bar( stat="identity")+
+  labs(y="Area (sq.km)", x = "Parking Space")
+```
+
+### Figure 24 Histogram of Current Parking Demand per MSOA (>500 excluded)
+```{r}
+# Total capacity of parking in Greater London.
+sum(census3$bicycle) #143182
+
+# Mean, Median, Max., Min.
+mean(census3$bicycle) #145.6582
+median(census3$bicycle) #42
+max(census3$bicycle) #13053
+min(census3$bicycle) #0
+skewness(census3$bicycle) #13.97264
+
+# Histogram
+ggplot(census3, aes(x = bicycle)) +
+  geom_histogram(position = "identity", 
+                 binwidth = 50,
+                 fill = "grey", 
+                 color = "black"
+                 )+
+  labs(y="Frequency", x = "Current Parking Demand per MSOA")
+
+census3 %>%
+  filter(bicycle > 0, bicycle < 500) %>%
+    ggplot(aes(x = bicycle)) +
+  geom_histogram(position = "identity", 
+                 binwidth = 10,
+                 fill = "grey", 
+                 color = "black"
+                 )+
+  labs(y="Frequency", x = "Current Parking Demand per MSOA")
+```
+
+### Figure 27 Histogram of Future Parking Demand per MSOA (>1,000 excluded)
+```{r}
+sum(census3$bicycle_future) #613945.6
+
+sum(census3$bicycle_future)/ sum(census3$bicycle) #4.287868 times more than current demand.
+
+
+# Mean, Median, Max., Min.
+mean(census3$bicycle_future) #624.5631
+median(census3$bicycle_future) #336.1253
+max(census3$bicycle_future) #35034.31
+min(census3$bicycle_future) #34.61217
+sd(census3$bicycle_future) #1561.68
+skewness(census3$bicycle_future) #14.13697
+
+# Histogram
+ggplot(census3, aes(x = bicycle_future)) +
+  geom_histogram(position = "identity", 
+                 binwidth = 50,
+                 fill = "grey", 
+                 color = "black"
+                 )+
+  labs(y="Frequency", x = "Future Parking Demand per MSOA")
+
+census3 %>%
+  filter(bicycle_future > 0, bicycle_future < 1000) %>%
+    ggplot(aes(x = bicycle_future)) +
+  geom_histogram(position = "identity", 
+                 binwidth = 10,
+                 fill = "grey", 
+                 color = "black"
+                 )+
+  labs(y="Frequency", x = "Future Parking Demand per MSOA")
+```
+
+### Figure 31 Breakdown of Parking Occupancy Category based on No. of Cyclist for Current Scenario (left) and Future Scenario (right)
+### Figure 32 Percentage Breakdown of Parking Occupancy Category based on No. of Cyclist for Current Scenario (left) and Future Scenario (right)
+```{r}
+tbd =
+  census3 %>%
+  group_by(BCG, porCurrentCat) %>%
+    summarise(count = n(), cyclists = sum(bicycle))
+
+col_pocu = c("#368cd3", "#73d87d", "#ffff01" ,"#ff3b40")
+
+# Charts by No of MSOA
+# Stacked barchart
+ggplot(tbd, aes(fill=porCurrentCat, y=count, x=BCG))  + 
+    geom_bar(position="stack", stat="identity")+
+  scale_fill_manual(values=col_pocu)+
+  labs(fill = "Parking\n Occupancy")+
+  labs(y="No. of MSOA", x = "BCG Category")
+
+# Percent stacked barchart
+ggplot(tbd, aes(fill=porCurrentCat, y=count, x=BCG))  + 
+    geom_bar(position="fill",  stat="identity", ) +
+  scale_fill_manual(values=col_pocu)
+
+# Charts by No of MSOA
+# Stacked barchart
+ggplot(tbd, aes(fill=porCurrentCat, y=cyclists, x=BCG))  + 
+    geom_bar(position="stack", stat="identity")+
+  scale_fill_manual(values=col_pocu)+
+  labs(fill = "Parking\n Occupancy")+
+  labs(y="No. of Cyclist", x = "PCTxBCG Category")
+
+# Percent stacked barchart
+ggplot(tbd, aes(fill=porCurrentCat, y=cyclists, x=BCG))  + 
+    geom_bar(position="fill",  stat="identity", ) +
+  scale_fill_manual(values=col_pocu)+
+  labs(fill = "Parking\n Occupancy")+
+  labs(y="No. of Cyclist", x = "PCTxBCG Category")
+```
+
+```{r}
+# Group by BCG and parking availability category based on GoDutch
+tbd =
+  census3 %>%
+  group_by(BCG, porFutureCat) %>%
+    summarise(count = n(), cyclists = sum(bicycle_future))
+
+
+# Charts by No of LSOA
+# Stacked barchart
+ggplot(tbd, aes(fill=porFutureCat, y=count, x=BCG))  + 
+    geom_bar(position="stack", stat="identity")+
+  scale_fill_manual(values=col_pocu)+
+  labs(fill = "Parking\n Occupancy")+
+  labs(y="No. of MSOA", x = "BCG Category")
+
+# Percent stacked barchart
+ggplot(tbd, aes(fill=porFutureCat, y=count, x=BCG))  + 
+    geom_bar(position="fill",  stat="identity", ) +
+  scale_fill_manual(values=col_pocu)
+
+# Charts by No of Cyclists
+# Stacked barchart
+ggplot(tbd, aes(fill=porFutureCat, y=cyclists, x=BCG))  + 
+    geom_bar(position="stack", stat="identity")+
+  scale_fill_manual(values=col_pocu)+
+  labs(fill = "Parking\n Occupancy")+
+  labs(y="No. of Cyclist", x = "PCTxBCG Category")
+
+# Percent stacked barchart
+ggplot(tbd, aes(fill=porFutureCat, y=cyclists, x=BCG))  + 
+    geom_bar(position="fill",  stat="identity", ) +
+  scale_fill_manual(values=col_pocu)+
+  labs(fill = "Parking\n Occupancy")+
+  labs(y="No. of Cyclist", x = "PCTxBCG Category")
+
+col_pocu = c("#368cd3", "#73d87d", "#ffff01" ,"#ff3b40")
+```
+
+### Figure 33 Scatter Plot of Parking Space and No. of Cyclist by MSOA for Current Scenario 
+```{r}
+ggplot(census3, 
+       aes(x = bicycle, 
+           y = space,
+           color = BCG)
+       )+
+  geom_point(size = 1) +
+  scale_colour_manual(values=BCGcol) +
+  geom_abline(intercept = 0, 
+              slope = 1, 
+              color="red", 
+              linetype="dashed", 
+              size=0.5) + # Cyclist:Parking=1:1
+  geom_abline(intercept = 0, 
+              slope = 1.25, 
+              color="black", 
+              linetype="dashed", 
+              size=0.5) + # Cyclist:Parking=1:1.2
+  geom_abline(intercept = 0, 
+              slope = 2, 
+              color="blue", 
+              linetype="dashed", 
+              size=0.5) + # Cyclist:Parking=1:2
+  xlim(0,NA)+
+  ylim(0,NA)+
+  facet_wrap( ~ BCG, ncol=4)+
+  labs(y="Parking Capacity", x = "Current No. of Cycle Commuter")
+```
+
+```{r}
+ggplot(census3, 
+       aes(x = bicycle, 
+           y = space,
+           color = BCG)
+       )+
+  geom_point(size = 1) +
+  scale_colour_manual(values=BCGcol) +
+  geom_abline(intercept = 0, 
+              slope = 1, 
+              color="red", 
+              linetype="dashed", 
+              size=0.5) + # Cyclist:Parking=1:1
+  geom_abline(intercept = 0, 
+              slope = 1.25, 
+              color="black", 
+              linetype="dashed", 
+              size=0.5) + # Cyclist:Parking=1:1.2
+  geom_abline(intercept = 0, 
+              slope = 2, 
+              color="blue", 
+              linetype="dashed", 
+              size=0.5) + # Cyclist:Parking=1:2
+  xlim(0,1000)+
+  ylim(0,500)+
+  facet_wrap( ~ BCG, ncol=4)+
+  labs(y="Parking Capacity", x = "Current No. of Cycle Commuter")
+```
+
+### Figure 34 Scatter Plot of Parking Space and No. of Cyclist by MSOA for Future Scenario
+```{r}
+# GoDutch - Plot provision of parking per BCG.
+ggplot(census3, 
+       aes(x = bicycle_future, 
+           y = space,
+           color = BCG)
+       )+
+  geom_point(size = 1) +
+  scale_colour_manual(values=BCGcol) +
+  geom_abline(intercept = 0, 
+              slope = 1, 
+              color="red", 
+              linetype="dashed", 
+              size=0.5) + # Cyclist:Parking=1:1
+  geom_abline(intercept = 0, 
+              slope = 1.25, 
+              color="black", 
+              linetype="dashed", 
+              size=0.5) + # Cyclist:Parking=1:1.2
+  geom_abline(intercept = 0, 
+              slope = 2, 
+              color="blue", 
+              linetype="dashed", 
+              size=0.5) + # Cyclist:Parking=1:2
+  xlim(0,NA)+
+  ylim(0,NA)+
+  facet_wrap( ~ BCG, ncol=4)+
+  labs(y="Parking Capacity", x = "Future No. of Cycle Commuter")
+```
+
+```{r}
+# GoDutch - Plot provision of parking per BCG.
+ggplot(census3, 
+       aes(x = bicycle_future, 
+           y = space,
+           color = BCG)
+       )+
+  geom_point(size = 1) +
+  scale_colour_manual(values=BCGcol) +
+  geom_abline(intercept = 0, 
+              slope = 1, 
+              color="red", 
+              linetype="dashed", 
+              size=0.5) + # Cyclist:Parking=1:1
+  geom_abline(intercept = 0, 
+              slope = 1.25, 
+              color="black", 
+              linetype="dashed", 
+              size=0.5) + # Cyclist:Parking=1:1.2
+  geom_abline(intercept = 0, 
+              slope = 2, 
+              color="blue", 
+              linetype="dashed", 
+              size=0.5) + # Cyclist:Parking=1:2
+  xlim(0,1000)+
+  ylim(0,500)+
+  facet_wrap( ~ BCG, ncol=4)+
+  labs(y="Parking Capacity", x = "Future No. of Cycle Commuter")
+```

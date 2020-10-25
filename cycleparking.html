@@ -374,7 +374,10 @@ summary {
 <div id="input-data" class="section level3">
 <h3>input data</h3>
 <p>census.rda: A census data of 2011 subsetting by Greater London. route.rda: route data obtained from PCT. parking.rda: parking data merged from CID and OSM. lsoa_msoa.rda: LSOA and MSOA link.</p>
-<p>##Load data</p>
+</div>
+</div>
+<div id="load-data" class="section level2">
+<h2>Load data</h2>
 <pre class="r"><code># Load census data.
 census = paste(getwd(),&quot;/data/census.rda&quot;, sep = &quot;&quot;)
 load(census)
@@ -390,6 +393,489 @@ load(parking)
 # Load lsoa_msoa data.
 lsoa_msoa = paste(getwd(),&quot;/data/lsoa_msoa.rda&quot;, sep = &quot;&quot;)
 load(lsoa_msoa)</code></pre>
+</div>
+<div id="join-msoa-code-to-census" class="section level2">
+<h2>Join MSOA code to census</h2>
+<pre class="r"><code># Join Origin MSOA
+census = left_join(census, lsoa_msoa, by = c(&quot;olsoa&quot; = &quot;lsoa&quot;))
+any(is.na(census$msoa)) # False, join successful.</code></pre>
+<pre><code>## [1] FALSE</code></pre>
+<pre class="r"><code>census$omsoa = census$msoa
+census = census[,c(&quot;olsoa&quot;,&quot;omsoa&quot;,&quot;dlsoa&quot;,&quot;all&quot;,&quot;bicycle&quot;)]
+
+# Join Destination MSOA
+census = left_join(census, lsoa_msoa, by = c(&quot;dlsoa&quot; = &quot;lsoa&quot;))
+any(is.na(census$msoa)) # False, join successful.</code></pre>
+<pre><code>## [1] FALSE</code></pre>
+<pre class="r"><code>census$dmsoa = census$msoa
+census = census[,c(&quot;olsoa&quot;,&quot;omsoa&quot;,&quot;dlsoa&quot;,&quot;dmsoa&quot;,&quot;all&quot;,&quot;bicycle&quot;)]</code></pre>
+</div>
+<div id="join-msoa-code-to-parking" class="section level2">
+<h2>Join MSOA code to parking</h2>
+<pre class="r"><code>parking = left_join(parking, lsoa_msoa, by = c(&quot;lsoa&quot; = &quot;lsoa&quot;))
+any(is.na(parking$msoa)) # False, join successful.</code></pre>
+<pre><code>## [1] FALSE</code></pre>
+<pre class="r"><code>parking = parking[,c(&quot;lsoa&quot;,&quot;msoa&quot;,&quot;space&quot;)]</code></pre>
+</div>
+<div id="aggregate-census-all-and-bicycle-by-msoa." class="section level2">
+<h2>Aggregate census’ all and bicycle by MSOA.</h2>
+<pre class="r"><code>census2 = 
+  census %&gt;%
+  group_by(omsoa,dmsoa)%&gt;%
+  summarise(all = sum(all), bicycle = sum(bicycle))</code></pre>
+<pre><code>## `summarise()` regrouping output by &#39;omsoa&#39; (override with `.groups` argument)</code></pre>
+<pre class="r"><code>sum(census2$all) == sum(census$all) #TRUE, successful.</code></pre>
+<pre><code>## [1] TRUE</code></pre>
+</div>
+<div id="add-distance-and-hilliness-to-census2." class="section level2">
+<h2>Add distance and hilliness to census2.</h2>
+<pre class="r"><code># Delete rows with rf_dist_km and rf_avslope_perc are NA. These NA rows have Other or OD0000003 written on geo_code2 column.
+route = 
+  route %&gt;%
+  filter(!is.na(rf_dist_km))
+any(is.na(route)) #FALSE, successful.</code></pre>
+<pre><code>## [1] FALSE</code></pre>
+<pre class="r"><code># CREATE JOIN ID.
+# 1. Create join ID for Origin = geo_code1, Destination = geo_code2, ID = OD
+route12 = route
+route12$id = paste(route$geo_code1, route$geo_code2)
+nrow(route12) #308782</code></pre>
+<pre><code>## [1] 308782</code></pre>
+<pre class="r"><code># 2. Create join ID for Origin = geo_code2, Destination = geo_code1, ID = OD
+route21 = route
+route21$id = paste(route$geo_code2, route$geo_code1)
+nrow(route21) #308782</code></pre>
+<pre><code>## [1] 308782</code></pre>
+<pre class="r"><code># 3. Combine two dfs.
+route = rbind(route12,route21)
+nrow(route) #617564</code></pre>
+<pre><code>## [1] 617564</code></pre>
+<pre class="r"><code># Remove duplication of ID which are intra-zonal OD pairs. Avoid adding duplicated rows when joining to census data.
+route = 
+  route %&gt;% distinct(id, .keep_all = TRUE)
+
+# Delete unnecessary column
+route = route[,c(&quot;id&quot;, &quot;rf_dist_km&quot;, &quot;rf_avslope_perc&quot;)]</code></pre>
+</div>
+<div id="join-distance-and-hilliness-to-census2." class="section level2">
+<h2>Join distance and hilliness to census2.</h2>
+<pre class="r"><code># Create join id for Census data.
+census2$id = paste(census2$omsoa, census2$dmsoa)
+
+# Join route data.
+census2 = left_join(census2, route, by = &quot;id&quot;)
+
+# Delete id column
+census2 = 
+  census2 %&gt;%
+  select(-id)
+
+any(is.na(census2)) #TRUE</code></pre>
+<pre><code>## [1] TRUE</code></pre>
+<pre class="r"><code>  census2 %&gt;%
+  filter(is.na(rf_dist_km))</code></pre>
+<pre><code>## # A tibble: 219,452 x 6
+## # Groups:   omsoa [7,147]
+##    omsoa     dmsoa       all bicycle rf_dist_km rf_avslope_perc
+##    &lt;chr&gt;     &lt;chr&gt;     &lt;int&gt;   &lt;int&gt;      &lt;dbl&gt;           &lt;dbl&gt;
+##  1 E02000001 E02000509     1       0         NA              NA
+##  2 E02000002 E02000053     2       0         NA              NA
+##  3 E02000002 E02000093     3       0         NA              NA
+##  4 E02000002 E02000106     2       0         NA              NA
+##  5 E02000002 E02000116     1       0         NA              NA
+##  6 E02000002 E02000119     2       0         NA              NA
+##  7 E02000002 E02000150     1       0         NA              NA
+##  8 E02000002 E02000220     1       0         NA              NA
+##  9 E02000002 E02000225     1       0         NA              NA
+## 10 E02000002 E02000244     1       0         NA              NA
+## # ... with 219,442 more rows</code></pre>
+</div>
+<div id="check-census-data." class="section level2">
+<h2>Check census data.</h2>
+<pre class="r"><code># Check if there is any No fixed place data on Census. -&gt; No.
+nrow(census2) #601902 rows.</code></pre>
+<pre><code>## [1] 601902</code></pre>
+<pre class="r"><code>census2 %&gt;%
+  mutate(First3D = substring(dmsoa,1,3)) %&gt;% # Obtain first three letters of destination MSOA.
+  filter(First3D == &quot;E02&quot;) # Check if all rows are E02. 601902 rows Correct.</code></pre>
+<pre><code>## # A tibble: 601,902 x 7
+## # Groups:   omsoa [7,189]
+##    omsoa     dmsoa       all bicycle rf_dist_km rf_avslope_perc First3D
+##    &lt;chr&gt;     &lt;chr&gt;     &lt;int&gt;   &lt;int&gt;      &lt;dbl&gt;           &lt;dbl&gt; &lt;chr&gt;  
+##  1 E02000001 E02000001  1506      33       1.05            1.64 E02    
+##  2 E02000001 E02000014     2       0      19.1             0.77 E02    
+##  3 E02000001 E02000016     3       0      13.9             0.87 E02    
+##  4 E02000001 E02000025     1       0      19.4             1.66 E02    
+##  5 E02000001 E02000028     1       0      18.5             1.58 E02    
+##  6 E02000001 E02000051     1       0      13               1.87 E02    
+##  7 E02000001 E02000053     2       0      15.8             2.34 E02    
+##  8 E02000001 E02000057     1       0      12.8             2.28 E02    
+##  9 E02000001 E02000058     1       0      12               2.31 E02    
+## 10 E02000001 E02000059     1       0      14.8             1.6  E02    
+## # ... with 601,892 more rows</code></pre>
+<pre class="r"><code>census2 %&gt;%
+  mutate(First3O = substring(omsoa,1,3)) %&gt;% # Obtain first three letters of origin MSOA.
+  group_by(First3O)%&gt;%
+  summarise(n(),sum(all),sum(bicycle)) # There are 4570 (bicycle n=97) commuters come from Wales.</code></pre>
+<pre><code>## `summarise()` ungrouping output (override with `.groups` argument)</code></pre>
+<pre><code>## # A tibble: 2 x 4
+##   First3O  `n()` `sum(all)` `sum(bicycle)`
+##   &lt;chr&gt;    &lt;int&gt;      &lt;int&gt;          &lt;int&gt;
+## 1 E02     598276    3711412         147102
+## 2 W02       3626       4570             97</code></pre>
+<pre class="r"><code># Identify intra-zonal trip.
+census2$intra = ifelse(census2$omsoa == census2$dmsoa, TRUE, FALSE)
+census2 %&gt;%
+  filter(intra == TRUE) %&gt;%
+  nrow() #983 rows</code></pre>
+<pre><code>## [1] 983</code></pre>
+<pre class="r"><code># Excluded rows?
+census2$excluded = ifelse(is.na(census2$rf_dist_km), TRUE, FALSE)</code></pre>
+</div>
+<div id="check-how-many-trips-are-excluded-and-how-many-are-intrainter-zonal-trips.-table-6.-number-of-commuters-into-greater-london" class="section level2">
+<h2>Check how many trips are excluded and how many are intra/inter zonal trips. (Table 6. Number of Commuters in/to Greater London)</h2>
+<pre class="r"><code>knitr::opts_chunk$set(eval = FALSE)
+
+# Total amount of travel to GL before excluding any trips.
+sum(census2$all) # 3715982</code></pre>
+<pre><code>## [1] 3715982</code></pre>
+<pre class="r"><code># Intra and Inter zonal trips
+census2 %&gt;%
+  group_by(intra) %&gt;%
+  summarise(n(),sum(all), sum(bicycle))</code></pre>
+<pre><code>## `summarise()` ungrouping output (override with `.groups` argument)</code></pre>
+<pre><code>## # A tibble: 2 x 4
+##   intra  `n()` `sum(all)` `sum(bicycle)`
+##   &lt;lgl&gt;  &lt;int&gt;      &lt;int&gt;          &lt;int&gt;
+## 1 FALSE 600919    3589916         143899
+## 2 TRUE     983     126066           3300</code></pre>
+<pre class="r"><code># Excluded and Included to the study.
+census2 %&gt;%
+  group_by(excluded) %&gt;%
+  summarise(n(),sum(all), sum(bicycle))</code></pre>
+<pre><code>## `summarise()` ungrouping output (override with `.groups` argument)</code></pre>
+<pre><code>## # A tibble: 2 x 4
+##   excluded  `n()` `sum(all)` `sum(bicycle)`
+##   &lt;lgl&gt;     &lt;int&gt;      &lt;int&gt;          &lt;int&gt;
+## 1 FALSE    382450    3145728         143182
+## 2 TRUE     219452     570254           4017</code></pre>
+<pre class="r"><code># Intra/Inter and Exclude/Include.
+census2 %&gt;%
+  group_by(excluded, intra) %&gt;%
+  summarise(n(),sum(all), sum(bicycle))</code></pre>
+<pre><code>## `summarise()` regrouping output by &#39;excluded&#39; (override with `.groups` argument)</code></pre>
+<pre><code>## # A tibble: 3 x 5
+## # Groups:   excluded [2]
+##   excluded intra  `n()` `sum(all)` `sum(bicycle)`
+##   &lt;lgl&gt;    &lt;lgl&gt;  &lt;int&gt;      &lt;int&gt;          &lt;int&gt;
+## 1 FALSE    FALSE 381467    3019662         139882
+## 2 FALSE    TRUE     983     126066           3300
+## 3 TRUE     FALSE 219452     570254           4017</code></pre>
+<pre class="r"><code>219452/nrow(census2)*100      # 36% OD pairs</code></pre>
+<pre><code>## [1] 36.45976</code></pre>
+<pre class="r"><code>570254/sum(census2$all)*100   # 15% all commuters</code></pre>
+<pre><code>## [1] 15.34598</code></pre>
+<pre class="r"><code>4017/sum(census2$bicycle)*100 # 3%  cycle commuters</code></pre>
+<pre><code>## [1] 2.728959</code></pre>
+</div>
+<div id="bcg-construction-step-1-eliminating-30km-od-and-calculategodutch-propensity" class="section level2">
+<h2>BCG construction Step 1: Eliminating &gt;30km od and CalculateGoDutch propensity</h2>
+<pre class="r"><code># Eliminate &gt;30km OD pairs
+census2 =
+  census2 %&gt;% #601902 od pairs
+  filter(excluded == FALSE) %&gt;% #382450 od pairs
+  select(-c(&quot;excluded&quot;))
+
+# Calculate parameter for Go Dutch.
+census2 =
+  census2 %&gt;%
+  mutate(logit_gd = 
+           -3.959 + 
+           (-0.5963 * rf_dist_km) + 
+           (1.866 * sqrt(rf_dist_km)) + 
+           (0.008050 * rf_dist_km^2) +
+           (-0.2710 * rf_avslope_perc) + 
+           (0.009394 * rf_dist_km*rf_avslope_perc) + 
+           (-0.05135 * sqrt(rf_dist_km) *rf_avslope_perc) +
+           2.523 +
+           (-0.07626*rf_dist_km)
+         ) 
+
+# Calculate GD propensity.
+census2$GDpct = exp(census2$logit_gd) / (1 + exp(census2$logit_gd))</code></pre>
+</div>
+<div id="bcg-construction-step-2-calculate-godutch-number-of-cycle-commuters-for-each-od-pair." class="section level2">
+<h2>BCG construction Step 2: Calculate GoDutch number of cycle commuters for each OD pair.</h2>
+<pre class="r"><code># Calculate future cycle commuter no. based on Go Dutch scenario.
+census2 =
+  census2%&gt;%
+  mutate(bicycle_gd = all*GDpct)
+
+# Check
+census2 %&gt;%
+  mutate(check = bicycle_gd &gt; bicycle) %&gt;%
+  group_by(check) %&gt;%
+  summarise(n())
+#FALSE  22467   OD pairs have already achieved Dutch propensity.        
+#TRUE   359983  
+
+census2 %&gt;%
+  filter(bicycle &gt; bicycle_gd) %&gt;%
+  arrange(desc(bicycle)) %&gt;%
+  nrow() #22467
+
+nrow(census2) #382450
+
+22467/382450 #0.05874493
+
+census2 %&gt;%
+  mutate(OverDutch = ifelse(bicycle &gt; bicycle_gd,TRUE, FALSE)) %&gt;%
+  group_by(OverDutch)%&gt;%
+  summarise(bicycle = sum(bicycle), bicycle_gd = sum(bicycle_gd))
+
+41567- 21290 #20277
+
+# Actual future share is assumed to be unchanged for OD pairs which already achieved the Dutch propensity.
+census2$bicycle_future =
+  ifelse(census2$bicycle_gd &gt; census2$bicycle,
+         census2$bicycle_gd,
+         census2$bicycle)
+
+# Rearrange columns
+names(census2)
+
+census2 = 
+  census2[,c(&quot;omsoa&quot;,&quot;dmsoa&quot;,&quot;all&quot;,&quot;bicycle&quot;,&quot;bicycle_future&quot;,&quot;bicycle_gd&quot;,&quot;GDpct&quot;,&quot;logit_gd&quot;,&quot;rf_dist_km&quot;,&quot;rf_avslope_perc&quot;,&quot;intra&quot;)]</code></pre>
+</div>
+<div id="bcg-construction-step-3-aggregate-by-destination-msoa." class="section level2">
+<h2>BCG construction Step 3: Aggregate by destination MSOA.</h2>
+<pre class="r"><code># Aggregate based on destination MSOA.
+census3 =
+  census2 %&gt;%
+  select(c(1:7))%&gt;%
+  group_by(dmsoa)%&gt;%
+  summarise(all = sum(all),
+            bicycle = sum(bicycle),
+            bicycle_future = sum(bicycle_future),
+            bicycle_gd = sum(bicycle_gd))
+
+# How many MSOAs in GL?
+length(unique(census2$dmsoa)) #983
+
+# Check
+sum(census2$all) == sum(census3$all) # TRUE
+sum(census2$bicycle) == sum(census3$bicycle) # TRUE
+sum(census2$bicycle_future) == sum(census3$bicycle_future) # TRUE
+sum(census2$bicycle_gd) == sum(census3$bicycle_gd) # TRUE</code></pre>
+</div>
+<div id="bcg-construction-step-4-construct-bcg-by-mean-values" class="section level2">
+<h2>BCG construction Step 4: Construct BCG by mean values</h2>
+<pre class="r"><code># Calculate current share for each MSOA
+census3$CurrentShare = census3$bicycle/census3$all
+
+# Calculate future share for each LSOA.
+census3$FutureShare = census3$bicycle_future/census3$all
+
+# Calculate growth share and add a new column.
+census3$Growth = census3$FutureShare - census3$CurrentShare
+
+# Horizontal axis (Current AT share)
+# If the share is lower than the mean, 1 otherwise 2.
+
+BCG_x = ifelse(
+  census3$CurrentShare &lt; mean(census3$CurrentShare),
+  1,2)
+
+# Vertical axis (Growth AT share)
+# If the share is lower than the mean, 1 otherwise 2.
+
+BCG_y = ifelse(
+  census3$Growth &lt; mean(census3$Growth),
+  1,2)
+
+# Combine the above two.
+BCG = paste(BCG_x,BCG_y,sep=&quot;&quot;)
+
+# Rename the codes to BCG terms.
+BCG = recode(BCG, 
+              &#39;11&#39; = &quot;Problematic&quot;, 
+              &#39;12&#39; = &quot;Questionable&quot;,
+              &#39;21&#39; = &quot;Achieved&quot;,
+              &#39;22&#39; = &quot;Promising&quot;)
+
+# Add a column.
+census3$BCG = BCG
+
+census3$BCG = factor(census3$BCG, 
+                levels = c(&quot;Promising&quot;,&quot;Achieved&quot;,&quot;Questionable&quot;,&quot;Problematic&quot;))
+
+# Current, Future Share and growth max.
+max(census3$CurrentShare) #0.148398
+max(census3$FutureShare) #0.3400569
+max(census3$Growth) #0.3242483</code></pre>
+</div>
+<div id="parking-1-aggregate-parking-space-for-each-msoa" class="section level2">
+<h2>Parking 1: Aggregate parking space for each MSOA</h2>
+<pre class="r"><code># the updated parking data
+parking
+sum(parking$space) #140788
+
+# Aggregate parking capacity based on MSOA
+parking2 =
+  parking %&gt;%
+  select(msoa, space) %&gt;%
+  group_by(msoa) %&gt;%
+  summarise(space = sum(space))
+
+sum(parking2$space) == sum(parking$space) #140788 TRUE</code></pre>
+</div>
+<div id="parking-2-join-parking-space-to-census" class="section level2">
+<h2>Parking 2: Join parking space to census</h2>
+<pre class="r"><code>census3 = left_join(census3, parking2, by = c(&quot;dmsoa&quot; = &quot;msoa&quot;))
+sum(census3$space) == sum(parking2$space) #TRUE Successful!</code></pre>
+</div>
+<div id="parking-occupancy-rate-por" class="section level1">
+<h1>Parking Occupancy Rate: por</h1>
+<p>4 Categories: Surplus : Less than 50% occupancy rate Ideal : 50% and more and 80% and less occupancy rate Threshold: More than 80% and 100% and less occupancy rate Shortage : More than 100% occupancy rate</p>
+<p>Examples: Surplus : bicycle= 30, parking=100 - Less than 50% occupancy rate Ideal : bicycle= 70, parking=100 - 50% and more and 80% and less occupancy rate Threshold: bicycle= 90, parking=100 - More than 80% and 100% and less occupancy rate Shortage : bicycle=110, parking=100 - More than 100% occupancy rate</p>
+<p>Exceptions: Case 1 : bicycle= 0, parking=100 -&gt; Surplus (n = 22 current) Case 2 : bicycle=10, parking=0 -&gt; Shortage (n = 1 current) Case 3 : bicycle= 0, parking=0 -&gt; Shortage (n = 0 observation)</p>
+<div id="current-occupancy-rate-and-category" class="section level2">
+<h2>Current Occupancy Rate and Category</h2>
+<pre class="r"><code># Current Occupancy Rate
+census3$porCurrent = census3$bicycle / census3$space
+
+census3%&gt;%
+  filter(bicycle == 0)
+census3%&gt;%
+  filter(space == 0)
+
+# Categorise into 4.
+## 2011 Occupancy Rate
+census3 = 
+  census3 %&gt;%
+    mutate(porCurrentCat = ifelse(porCurrent &gt; 1, &quot;Shortage&quot;, 
+                          ifelse(0.8 &lt; porCurrent &amp; porCurrent &lt;= 1, &quot;Threshold&quot;,
+                                 ifelse(0.5 &lt;= porCurrent &amp; porCurrent &lt;= 0.8, &quot;Ideal&quot;,
+                                        ifelse(0.5 &gt; porCurrent, &quot;Surplus&quot;,NA))))
+           )
+census3</code></pre>
+</div>
+<div id="future-occupancy-rate-and-category" class="section level2">
+<h2>Future Occupancy Rate and Category</h2>
+<pre class="r"><code># Future Occupancy Rate
+census3$porFuture = census3$bicycle_future / census3$space
+
+# Categorise into 4.
+## 2011 Occupancy Rate
+census3 = 
+  census3 %&gt;%
+    mutate(porFutureCat = ifelse(porFuture &gt; 1, &quot;Shortage&quot;, 
+                          ifelse(0.8 &lt; porFuture &amp; porFuture &lt;= 1, &quot;Threshold&quot;,
+                                 ifelse(0.5 &lt;= porFuture &amp; porFuture &lt;= 0.8, &quot;Ideal&quot;,
+                                        ifelse(0.5 &gt; porFuture, &quot;Surplus&quot;,NA))))
+           )
+
+census3</code></pre>
+</div>
+<div id="por-checking" class="section level2">
+<h2>por checking</h2>
+<pre class="r"><code>### Check data
+census3 %&gt;%
+  group_by(porCurrentCat)%&gt;%
+  summarise(n())
+
+census3 %&gt;%
+  group_by(porFutureCat)%&gt;%
+  summarise(n())
+
+nrow(census3) #983
+
+census3 %&gt;%
+  group_by(porCurrentCat)%&gt;%
+  summarise(n = n())%&gt;%
+  select(n)%&gt;%
+  sum() #983
+
+census3 %&gt;%
+  group_by(porFutureCat)%&gt;%
+  summarise(n = n())%&gt;%
+  select(n)%&gt;%
+  sum() #983</code></pre>
+</div>
+<div id="reorder-factor-of-por-categorisation" class="section level2">
+<h2>Reorder factor of por categorisation</h2>
+<pre class="r"><code># Convert to factor.
+census3$porCurrentCat = as.factor(census3$porCurrentCat)
+census3$porFutureCat  = as.factor(census3$porFutureCat)
+
+# Check levels
+levels(census3$porCurrentCat)
+levels(census3$porFutureCat)
+#&quot;Ideal&quot;     &quot;Shortage&quot;  &quot;Surplus&quot;   &quot;Threshold&quot;
+
+# Reorder factor levels
+census3$porCurrentCat = factor(census3$porCurrentCat, 
+                levels = c(&quot;Surplus&quot;,&quot;Ideal&quot;,&quot;Threshold&quot;,&quot;Shortage&quot;))
+census3$porFutureCat = factor(census3$porFutureCat, 
+                levels = c(&quot;Surplus&quot;,&quot;Ideal&quot;,&quot;Threshold&quot;,&quot;Shortage&quot;))
+
+
+# Check levels
+levels(census3$porCurrentCat)
+levels(census3$porFutureCat)
+#&quot;Surplus&quot;   &quot;Ideal&quot;     &quot;Threshold&quot; &quot;Shortage&quot; </code></pre>
+</div>
+</div>
+<div id="figures" class="section level1">
+<h1>Figures</h1>
+<div id="figure-9-histogram-of-current-and-future-share-of-cycle-commuter" class="section level3">
+<h3>Figure 9 Histogram of Current and Future Share of Cycle Commuter</h3>
+<pre class="r"><code>current = data.frame(share = census3$CurrentShare)
+future  = data.frame(share = census3$FutureShare)
+
+current$category = &#39;Current&#39;
+future$category  = &#39;Future&#39;
+
+shareCF &lt;- rbind(current, future)
+
+ggplot(shareCF, aes(share, fill = category)) + geom_density(alpha = 0.2)
+
+ggplot(shareCF, aes(share, fill = category)) + 
+  geom_histogram(alpha = 0.2, position = &quot;identity&quot;, binwidth = 0.01) +
+  labs(y=&quot;Frequency&quot;, x = &quot;Current and Future Share of Cycle Commuter&quot;)</code></pre>
+</div>
+<div id="figure-14-histogram-of-growth-share-of-cycle-commuter" class="section level3">
+<h3>Figure 14 Histogram of Growth Share of Cycle Commuter</h3>
+<pre class="r"><code># Mean, Median, Max., Min.
+mean(census3$Growth) #0.1950014
+median(census3$Growth) #0.1923137
+max(census3$Growth) #0.3242483
+min(census3$Growth) #0.06974227
+
+# Histogram
+ggplot(census3, aes(x = Growth)) +
+  geom_histogram(position = &quot;identity&quot;, 
+                 binwidth = 0.01,
+                 fill = &quot;grey&quot;, 
+                 color = &quot;black&quot;
+                 )+
+  labs(y=&quot;Frequency&quot;, x = &quot;Growth Share of Cycle Commuter&quot;)</code></pre>
+</div>
+<div id="figure-16-scatter-plot-of-growth-and-current-share-of-cycle-commuter" class="section level3">
+<h3>Figure 16 Scatter Plot of Growth and Current Share of Cycle Commuter</h3>
+<pre class="r"><code>BCGcol = c(&quot;#368cd3&quot;, &quot;#73d87d&quot;, &quot;#ffff01&quot;, &quot;#ff3b40&quot;)
+
+ggplot(census3, aes(x = CurrentShare, y = Growth)) +
+  geom_point(aes(color = BCG), size = 1) +
+  scale_colour_manual(values=BCGcol) + 
+  geom_line(aes(x = mean(CurrentShare))) +
+  geom_line(aes(y = mean(Growth))) +
+  labs(y=&quot;Current Share&quot;, x = &quot;Growth Share&quot;) +
+  labs(colour = &quot;PCTxBCG Category&quot;)+
+  labs(y=&quot;Growth Share of Cycle Commuter&quot;, x = &quot;Current Share of Cycle Commuter&quot;)
+
+mean(census3$CurrentShare)*100 #3.563695
+mean(census3$Growth)*100 #19.50014</code></pre>
 </div>
 </div>
 
