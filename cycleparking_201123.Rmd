@@ -17,7 +17,10 @@ Sys.setlocale("LC_ALL","English")
 # Load necessary packages.
 library(dplyr)
 library(ggplot2)
-library(e1071) #for calculating skewness.
+library(e1071) # for calculating skewness.
+library(tmap) # for static and interactive maps.
+library(tmaptools) # for color brewer.
+library(sf) # for working with vector file.
 ```
 
 ## Read me
@@ -48,6 +51,10 @@ load(area)
 # Load lsoa_msoa data.
 lsoa_msoa = paste(getwd(),"/data/lsoa_msoa.rda", sep = "")
 load(lsoa_msoa)
+
+# MSOA shapefile.
+msoa = st_read("C:\\Users\\yuhei\\Documents\\R\\cycleparking\\data\\msoa.shp")
+
 ```
 
 ## Join MSOA code to census
@@ -306,15 +313,15 @@ BCG = paste(BCG_x,BCG_y,sep="")
 # Rename the codes to BCG terms.
 BCG = recode(BCG, 
               '11' = "Problematic", 
-              '12' = "Questionable",
+              '12' = "Promising",
               '21' = "Achieved",
-              '22' = "Promising")
+              '22' = "Maturing")
 
 # Add a column.
 census3$BCG = BCG
 
 census3$BCG = factor(census3$BCG, 
-                levels = c("Promising","Achieved","Questionable","Problematic"))
+                levels = c("Maturing","Achieved","Promising","Problematic"))
 
 # Current, Future Share and growth max.
 max(census3$CurrentShare) #0.148398
@@ -347,15 +354,15 @@ BCG = paste(BCG_x,BCG_y,sep="")
 # Rename the codes to BCG terms.
 BCG = recode(BCG, 
               '11' = "Problematic", 
-              '12' = "Questionable",
+              '12' = "Promising",
               '21' = "Achieved",
-              '22' = "Promising")
+              '22' = "Maturing")
 
 # Add a column.
 census3$BCGNos = BCG
 
 census3$BCGNos = factor(census3$BCGNos, 
-                levels = c("Promising","Achieved","Questionable","Problematic"))
+                levels = c("Maturing","Achieved","Promising","Problematic"))
 
 # Current, Future Share and growth max.
 max(census3$CurrentShare) #0.148398
@@ -500,52 +507,74 @@ levels(census3$porFutureCat)
 #"Surplus"   "Ideal"     "Threshold" "Shortage" 
 ```
 
-# Figures
-### Figure 9 Histogram of Current and Future Share of Cycle Commuter
+## Join census 3 dataframe to shapefile msoa
 ```{r}
-current = data.frame(share = census3$CurrentShare)
-future  = data.frame(share = census3$FutureShare)
-
-current$category = 'Current'
-future$category  = 'Future'
-
-shareCF <- rbind(current, future)
-
-ggplot(shareCF, aes(share, fill = category)) + geom_density(alpha = 0.2)
-
-ggplot(shareCF, aes(share, fill = category)) + 
-  geom_histogram(alpha = 0.2, position = "identity", binwidth = 0.01) +
-  labs(y="Frequency", x = "Current and Future Share of Cycle Commuter")
+msoa = left_join(msoa,census3, by = c("msoa" = "dmsoa"))
 ```
 
-### Figure 14 Histogram of Growth Share of Cycle Commuter
+# Figures
+## Set Up
 ```{r}
-# Mean, Median, Max., Min.
-mean(census3$Growth) #0.1950014
-median(census3$Growth) #0.1923137
-max(census3$Growth) #0.3242483
-min(census3$Growth) #0.06974227
+BCGcol = c("#368cd3", "#73d87d", "#ffff01", "#ff3b40")
+col_pocu = c("#368cd3", "#73d87d", "#ffff01" ,"#ff3b40")
 
-# Histogram
-ggplot(census3, aes(x = Growth)) +
-  geom_histogram(position = "identity", 
-                 binwidth = 0.01,
-                 fill = "grey", 
-                 color = "black"
-                 )+
-  labs(y="Frequency", x = "Growth Share of Cycle Commuter")
+```
+
+
+### Figure 10 Destination Based Spatial Distribution of Current Cycle Commuter Share
+```{r}
+get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75))
+
+tm_shape(msoa) +
+  tm_polygons(col = "CurrentShare",
+              style = "fixed",
+              breaks = c(0, 0.02,0.04,0.06,0.09,0.15),
+              legend.hist = TRUE,
+              palette = get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75)),
+              title = "Current Share \n of Cycle Commuter")+
+  tm_layout(legend.outside = TRUE)+
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
+
+```
+
+### Figure 11 Destination Based Spatial Distribution of Future Cycle Commuter Share
+```{r}
+tm_shape(msoa) +
+  tm_polygons(col = "FutureShare",
+              style = "fixed",
+              breaks = c(0.11, 0.19,0.22,0.24,0.27,0.35),
+              legend.hist = TRUE,
+              palette = get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75)),
+              title = "Future Share \n of Cycle Commuter")+
+  tm_layout(legend.outside = TRUE) +
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
+```
+
+### Figure 15 Destination Based Spatial Distribution of Growth Cycle Commuter Share
+```{r}
+tm_shape(msoa) +
+  tm_polygons(col = "Growth",
+              style = "fixed",
+              breaks = c(0.06, 0.16, 0.18, 0.20, 0.24, 0.33),
+              legend.hist = TRUE,
+              palette = get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75)),
+              title = "Growth Share \n of Cycle Commuter")+
+  tm_layout(legend.outside = TRUE) +
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
+
 ```
 
 ### Figure 16 Scatter Plot of Growth and Current Share of Cycle Commuter
 ```{r}
-BCGcol = c("#368cd3", "#73d87d", "#ffff01", "#ff3b40")
-
 ggplot(census3, aes(x = CurrentShare, y = Growth)) +
   geom_point(aes(color = BCG), size = 1) +
   scale_colour_manual(values=BCGcol) + 
   geom_line(aes(x = mean(CurrentShare))) +
   geom_line(aes(y = mean(Growth))) +
-  labs(colour = "PCTxBCG Category")+
+  labs(colour = "Mode Share Matrix Quadrants")+
   labs(y="Growth Share of Cycle Commuter", x = "Current Share of Cycle Commuter")
 
 mean(census3$CurrentShare)*100 #3.563695
@@ -561,7 +590,7 @@ ggplot(census3, aes(x = CurrentShare, y = GrowthNos)) +
   scale_colour_manual(values=BCGcol) + 
   geom_line(aes(x = mean(CurrentShare))) +
   geom_line(aes(y = mean(GrowthNos))) +
-  labs(colour = "PCTxBCG Category")+
+  labs(colour = "Mode Share Matrix Quadrants")+
   labs(y="Growth Amount of Cycle Commuter", x = "Current Share of Cycle Commuter")
 
 mean(census3$CurrentShare)*100 #3.563695
@@ -577,7 +606,7 @@ test = ggplot(census3, aes(x = CurrentShare, y = GrowthNos)) +
   scale_colour_manual(values=BCGcol) + 
   geom_line(aes(x = mean(CurrentShare))) +
   geom_line(aes(y = mean(GrowthNos))) +
-  labs(colour = "PCTxBCG Category")+
+  labs(colour = "Mode Share Matrix Quadrants")+
   labs(y="Growth Amount of Cycle Commuter", x = "Current Share of Cycle Commuter")
 
 mean(census3$CurrentShare)*100 #3.563695
@@ -586,79 +615,26 @@ mean(census3$GrowthNos) #478.905
 test + scale_y_continuous(trans = 'log10')
 ```
 
-### Figure 17 Violin Plot of Growth and Current Share of Cycle Commuter
+### Figure 18 Spatial Distribution of BCG Categories
 ```{r}
-# Mutate and label data based on current share, categorise into 5.
-vplot= census3 %>%
-  mutate(vplot = ifelse(CurrentShare < 0.03, "0-3%",
-                        ifelse(0.03 <= CurrentShare & CurrentShare < 0.06, "3-6%", 
-                               ifelse(0.06 <= CurrentShare & CurrentShare < 0.09, "6-9%",
-                                      ifelse(0.09 <= CurrentShare & CurrentShare < 0.12, "9-12%",
-                                             ifelse(0.12 <= CurrentShare, "12-15%" , NA)))))
-         )%>%
-  select(CurrentShare, Growth,vplot) 
+tm_shape(msoa) +
+  tm_polygons(col = "BCG", palette = BCGcol,
+              title = "Mode Share\nMatrix Quadrants")+
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
 
-# Convert to factor.
-vplot$vplot = as.factor(vplot$vplot)
-
-# Reorder factor.
-vplot$vplot = factor(vplot$vplot,
-                     levels = c("0-3%","3-6%","6-9%","9-12%","12-15%"))
-
-ggplot(vplot, aes(x=vplot, y=Growth,  color =vplot)) + 
-  geom_violin() + 
-  geom_jitter(shape=16, position=position_jitter(0.2)) +
-  labs(y="Growth Share of Cycle Commuter", x = "Current Share of Cycle Commuter")
-
-ggplot(vplot, aes(x=vplot, y=Growth,  color =vplot)) + 
-  geom_violin() + 
-  geom_boxplot(width=0.1)+
-  labs(y="Growth Share of Cycle Commuter", x = "Current Share of Cycle Commuter")
-
-
-vplot %>%
-  group_by(vplot)%>%
-  summarise(n= n(), min = min(Growth), max = max(Growth)) %>%
-  mutate(range = max -min)
 ```
 
-### Figure 20 Histogram of Parking Space per MSOA
+### Figure 18-1 Spatial Distribution of BCG Categories
 ```{r}
-# Total capacity of parking in Greater London.
-sum(census3$space) #140788
+tm_shape(msoa) +
+  tm_polygons(col = "BCGNos", palette = BCGcol,
+              title = "Mode Share\nMatrix Quadrants")+
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
 
-# Mean, Median, Max., Min.
-mean(census3$space) #143.2228
-median(census3$space) #76
-max(census3$space) #3010
-min(census3$space) #0
-sd(census3$space) #222.0242
-skewness(census3$space) #5.320692
-
-# High concentration of parking space on the small numbers of MSOA?
-census3 %>%
-  arrange(desc(space)) %>%
-  select(space)%>%
-    top_n(-983*0.3)%>%
-  sum() #16609
-
-16609/140788  #10  - 12%
-62544/140788  #100 - 44%
-61303/140788  #10% - 44%
-95165/140788  #25% - 68%
-123889/140788 #50% - 88%
-
-6160/140788   #-30% - 4%
-
-# Histogram
-ggplot(census3, aes(x = space)) +
-  geom_histogram(position = "identity", 
-                 binwidth = 10,
-                 fill = "grey", 
-                 color = "black"
-                 )+
-  labs(y="Frequency", x = "Parking Capacity per MSOA")
 ```
+
 
 ### Figure 21 Breakdown of Parking Space by No. of Cycle Commuter (left) and Area (right)
 ```{r}
@@ -715,71 +691,95 @@ ggplot(tbd2,aes(x=space2, y = area_kmsq)) +
   labs(y="Area (sq.km)", x = "Parking Space")
 ```
 
-### Figure 24 Histogram of Current Parking Demand per MSOA (>500 excluded)
+### Figure 22 Spatial Distribution of Cycle Parking Supply
 ```{r}
-# Total capacity of parking in Greater London.
-sum(census3$bicycle) #143182
-
-# Mean, Median, Max., Min.
-mean(census3$bicycle) #145.6582
-median(census3$bicycle) #42
-max(census3$bicycle) #13053
-min(census3$bicycle) #0
-skewness(census3$bicycle) #13.97264
-
-# Histogram
-ggplot(census3, aes(x = bicycle)) +
-  geom_histogram(position = "identity", 
-                 binwidth = 50,
-                 fill = "grey", 
-                 color = "black"
-                 )+
-  labs(y="Frequency", x = "Current Parking Demand per MSOA")
-
-census3 %>%
-  filter(bicycle > 0, bicycle < 500) %>%
-    ggplot(aes(x = bicycle)) +
-  geom_histogram(position = "identity", 
-                 binwidth = 10,
-                 fill = "grey", 
-                 color = "black"
-                 )+
-  labs(y="Frequency", x = "Current Parking Demand per MSOA")
+tm_shape(msoa) +
+  tm_polygons(col = "space",
+              style = "fixed",
+              breaks = c(0, 134, 176, 217, 270, 336, 420, 508, 718, 1074, 3010),
+              palette = get_brewer_pal("Spectral", n = 10, contrast = c(0, 0.75)),
+              legend.hist = TRUE,
+              title = "Parking Supply")+
+  tm_layout(legend.outside = TRUE) +
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
+```
+### Figure 25 Spatial Distribution of Current Parking Space Demand
+```{r}
+tm_shape(msoa) +
+  tm_polygons(col = "bicycle",
+              style = "fixed",
+              breaks = c(0, 134, 176, 217, 270, 336, 420, 508, 718, 1074, 13053),
+              legend.hist = TRUE,
+              palette = get_brewer_pal("Spectral", n = 10, contrast = c(0, 0.75)),
+              title = "Current Parking \nDemand")+
+  tm_layout(legend.outside = TRUE) +
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
 ```
 
-### Figure 27 Histogram of Future Parking Demand per MSOA (>1,000 excluded)
+### Figure 26 Increased Amount (left) and Increased Rate (right) of Parking Demand
 ```{r}
-sum(census3$bicycle_future) #613945.6
+tbd = msoa[,c("bicycle", "bicycle_future")]
+tbd$increasedAmount = tbd$bicycle_future - tbd$bicycle
+tbd$increasedRate = tbd$bicycle_future/tbd$bicycle
 
-sum(census3$bicycle_future)/ sum(census3$bicycle) #4.287868 times more than current demand.
+tm_shape(tbd) +
+  tm_polygons(col = "increasedAmount",
+              style = "fixed",
+              breaks = c(31, 152, 228, 250, 568, 21982),
+              legend.hist = TRUE,
+              palette = get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75)),
+              title = "Parking Demand\n Growth\n(Future - Current)")+
+  tm_layout(legend.outside = TRUE) +
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
 
+tm_shape(tbd) +
+  tm_polygons(col = "increasedRate",
+              style = "fixed",
+              breaks = c(1.6, 4, 7, 10, 15,109),
+              legend.hist = TRUE,
+              palette = get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75)),
+              title = "Parking Demand\n Growth\n(Future/Current)")+
+  tm_layout(legend.outside = TRUE) +
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
+```
 
-# Mean, Median, Max., Min.
-mean(census3$bicycle_future) #624.5631
-median(census3$bicycle_future) #336.1253
-max(census3$bicycle_future) #35034.31
-min(census3$bicycle_future) #34.61217
-sd(census3$bicycle_future) #1561.68
-skewness(census3$bicycle_future) #14.13697
+### Figure 28 Spatial Distribution of Future Parking Capacity Demand
+```{r}
+tm_shape(msoa) +
+  tm_polygons(col = "bicycle_future",
+              style = "fixed",
+              breaks = c(34, 134, 176, 217, 270, 336, 420, 508, 718, 1074, 35035),
+              legend.hist = TRUE,
+              palette = get_brewer_pal("Spectral", n = 10, contrast = c(0, 0.75)),
+              title = "Future Parking\n Demand")+
+  tm_layout(legend.outside = TRUE)
 
-# Histogram
-ggplot(census3, aes(x = bicycle_future)) +
-  geom_histogram(position = "identity", 
-                 binwidth = 50,
-                 fill = "grey", 
-                 color = "black"
-                 )+
-  labs(y="Frequency", x = "Future Parking Demand per MSOA")
+```
 
-census3 %>%
-  filter(bicycle_future > 0, bicycle_future < 1000) %>%
-    ggplot(aes(x = bicycle_future)) +
-  geom_histogram(position = "identity", 
-                 binwidth = 10,
-                 fill = "grey", 
-                 color = "black"
-                 )+
-  labs(y="Frequency", x = "Future Parking Demand per MSOA")
+### Figure 29 Spatial Distribution of Parking Occupancy Category for Current Scenario
+```{r}
+tm_shape(msoa) +
+  tm_polygons(col = "porCurrentCat", 
+              palette = col_pocu,
+              title = "Current \n Parking Occupancy")+
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
+
+```
+
+### Figure 30 Spatial Distribution of Parking Occupancy Category for Future Scenario
+```{r}
+tm_shape(msoa) +
+  tm_polygons(col = "porFutureCat", 
+              palette = col_pocu,
+              title = "Future \n Parking Occupancy")+
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
+
 ```
 
 ### Figure 31 Breakdown of Parking Occupancy Category based on No. of Cyclist for Current Scenario (left) and Future Scenario (right)
@@ -789,8 +789,6 @@ tbd =
   census3 %>%
   group_by(BCG, porCurrentCat) %>%
     summarise(count = n(), cyclists = sum(bicycle))
-
-col_pocu = c("#368cd3", "#73d87d", "#ffff01" ,"#ff3b40")
 
 # Charts by No of MSOA
 # Stacked barchart
@@ -811,14 +809,14 @@ ggplot(tbd, aes(fill=porCurrentCat, y=cyclists, x=BCG))  +
     geom_bar(position="stack", stat="identity")+
   scale_fill_manual(values=col_pocu)+
   labs(fill = "Parking\n Occupancy")+
-  labs(y="No. of Cyclist", x = "PCTxBCG Category")
+  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
 
 # Percent stacked barchart
 ggplot(tbd, aes(fill=porCurrentCat, y=cyclists, x=BCG))  + 
     geom_bar(position="fill",  stat="identity", ) +
   scale_fill_manual(values=col_pocu)+
   labs(fill = "Parking\n Occupancy")+
-  labs(y="No. of Cyclist", x = "PCTxBCG Category")
+  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
 ```
 
 ```{r}
@@ -848,14 +846,14 @@ ggplot(tbd, aes(fill=porFutureCat, y=cyclists, x=BCG))  +
     geom_bar(position="stack", stat="identity")+
   scale_fill_manual(values=col_pocu)+
   labs(fill = "Parking\n Occupancy")+
-  labs(y="No. of Cyclist", x = "PCTxBCG Category")
+  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
 
 # Percent stacked barchart
 ggplot(tbd, aes(fill=porFutureCat, y=cyclists, x=BCG))  + 
     geom_bar(position="fill",  stat="identity", ) +
   scale_fill_manual(values=col_pocu)+
   labs(fill = "Parking\n Occupancy")+
-  labs(y="No. of Cyclist", x = "PCTxBCG Category")
+  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
 
 col_pocu = c("#368cd3", "#73d87d", "#ffff01" ,"#ff3b40")
 ```
@@ -1109,3 +1107,4 @@ test = ggplot(census3,
 
 test + scale_x_continuous(trans = 'log10') +  scale_y_continuous(trans = 'log10')
 ```
+
