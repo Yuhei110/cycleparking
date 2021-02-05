@@ -8,7 +8,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 
 # Change language settings.
 Sys.setenv(LANG = "en")
@@ -21,8 +21,6 @@ library(e1071) # for calculating skewness.
 library(tmap) # for static and interactive maps.
 library(tmaptools) # for color brewer.
 library(sf) # for working with vector file.
-library(RColorBrewer) # for 
-
 ```
 
 ## Read me
@@ -56,6 +54,7 @@ load(lsoa_msoa)
 
 # MSOA shapefile.
 msoa = st_read("C:\\Users\\yuhei\\Documents\\R\\cycleparking\\data\\msoa.shp")
+
 ```
 
 ## Join MSOA code to census
@@ -165,6 +164,8 @@ census2$excluded = ifelse(is.na(census2$rf_dist_km), TRUE, FALSE)
 
 ## Check how many trips are excluded and how many are intra/inter zonal trips. (Table 6. Number of Commuters in/to Greater London) 
 ```{r}
+knitr::opts_chunk$set(eval = FALSE)
+
 # Total amount of travel to GL before excluding any trips.
 sum(census2$all) # 3715982
 
@@ -320,7 +321,7 @@ BCG = recode(BCG,
 census3$BCG = BCG
 
 census3$BCG = factor(census3$BCG, 
-                levels = c("Achieved","Maturing","Promising","Problematic"))
+                levels = c("Maturing","Achieved","Promising","Problematic"))
 
 # Current, Future Share and growth max.
 max(census3$CurrentShare) #0.148398
@@ -361,7 +362,7 @@ BCG = recode(BCG,
 census3$BCGNos = BCG
 
 census3$BCGNos = factor(census3$BCGNos, 
-                levels = c("Achieved","Maturing","Promising","Problematic"))
+                levels = c("Maturing","Achieved","Promising","Problematic"))
 
 # Current, Future Share and growth max.
 max(census3$CurrentShare) #0.148398
@@ -375,114 +376,10 @@ tbd$BCG_y = BCG_y
 rm(tbd)
 ```
 
-# Government Target Equity 
-
-## BCG construction Step 1: Eliminating >30km od and Calculate Government Target Equity (GE) propensity
-```{r}
-# Calculate parameter for Government Target Equity (GE).
-census2 =
-  census2 %>%
-  mutate(logit_ge = 
-           -3.959 + 
-           (-0.5963 * rf_dist_km) + 
-           (1.866 * sqrt(rf_dist_km)) + 
-           (0.008050 * rf_dist_km^2) +
-           (-0.2710 * rf_avslope_perc) + 
-           (0.009394 * rf_dist_km*rf_avslope_perc) + 
-           (-0.05135 * sqrt(rf_dist_km) *rf_avslope_perc)
-         )
-
-# Calculate GE propensity.
-census2$GEpct = exp(census2$logit_ge) / (1 + exp(census2$logit_ge))
-```
-
-## BCG construction Step 2: Calculate Government Target Equity (GE) number of cycle commuters for each OD pair.
-```{r}
-# Calculate future cycle commuter no. based on Government Target Equity (GE) scenario.
-census2 =
-  census2%>%
-  mutate(bicycle_ge = bicycle + all*GEpct)
-
-# Check
-sum(census2$bicycle_ge)/sum(census2$bicycle) #1.6 times in total by GE scenario
-
-# Rearrange columns
-names(census2)
-
-census2 = 
-  census2[,c("omsoa","dmsoa","all","bicycle","bicycle_future","bicycle_gd","bicycle_ge","GDpct","GEpct","logit_gd","logit_ge","rf_dist_km","rf_avslope_perc","intra")]
-```
-
-## BCG construction Step 3: Aggregate by destination MSOA.
-```{r}
-# Aggregate based on destination MSOA.
-census3 =
-  census2 %>%
-  group_by(dmsoa)%>%
-  summarise(all = sum(all),
-            bicycle = sum(bicycle),
-            bicycle_future = sum(bicycle_future),
-            bicycle_gd = sum(bicycle_gd),
-            bicycle_ge = sum(bicycle_ge)
-            )
-
-# How many MSOAs in GL?
-length(unique(census2$dmsoa)) #983
-
-# Check
-sum(census2$all) == sum(census3$all) # TRUE
-sum(census2$bicycle) == sum(census3$bicycle) # TRUE
-sum(census2$bicycle_future) == sum(census3$bicycle_future) # TRUE
-sum(census2$bicycle_gd) == sum(census3$bicycle_gd) # TRUE
-sum(census2$bicycle_ge) == sum(census3$bicycle_ge) # TRUE
-
-```
-
-## BCG construction Step 5: Construct BCG by mean values - Growth amount version
-```{r}
-# Calculate growth amount and add a new column.
-census3$GrowthNosGE = census3$bicycle_ge - census3$bicycle
-
-# Horizontal axis (Current AT share)
-# If the share is lower than the mean, 1 otherwise 2.
-
-BCG_x = ifelse(
-  census3$CurrentShare < mean(census3$CurrentShare),
-  1,2)
-
-# Vertical axis (Growth AT share)
-# If the share is lower than the mean, 1 otherwise 2.
-
-BCG_y = ifelse(
-  census3$GrowthNosGE < mean(census3$GrowthNosGE),
-  1,2)
-
-# Combine the above two.
-BCG = paste(BCG_x,BCG_y,sep="")
-
-# Rename the codes to BCG terms.
-BCG = recode(BCG, 
-              '11' = "Problematic", 
-              '12' = "Promising",
-              '21' = "Achieved",
-              '22' = "Maturing")
-
-# Add a column.
-census3$BCGNosGE = BCG
-
-census3$BCGNosGE = factor(census3$BCGNosGE, 
-                levels = c("Achieved","Maturing","Promising","Problematic"))
-
-census3%>%
-  select(GrowthNosGE,BCGNosGE)%>%
-  filter(census3$GrowthNosGE > mean(census3$GrowthNosGE))%>%
-  group_by(BCGNosGE)%>%
-  summarise(n())
-```
-
 ## Parking 1: Aggregate parking space for each MSOA
 ```{r}
 # the updated parking data
+parking
 sum(parking$space) #140788
 
 # Aggregate parking capacity based on MSOA
@@ -542,39 +439,20 @@ census3 =
 census3
 ```
 
-## Future Occupancy Rate and Category for Go Dutch (GD) scenario and government target equity (GE) scenario
+## Future Occupancy Rate and Category
 ```{r}
-# Future Occupancy Rate GD
-census3$porFutureGD = census3$bicycle_future / census3$space
+# Future Occupancy Rate
+census3$porFuture = census3$bicycle_future / census3$space
 
 # Categorise into 4.
-## 2011 Occupancy Rate GD
+## 2011 Occupancy Rate
 census3 = 
   census3 %>%
-    mutate(porFutureGDCat = ifelse(porFutureGD > 1, "Shortage", 
-                          ifelse(0.8 < porFutureGD & porFutureGD <= 1, "Threshold",
-                                 ifelse(0.5 <= porFutureGD & porFutureGD <= 0.8, "Ideal",
-                                        ifelse(0.5 > porFutureGD, "Surplus",NA))))
+    mutate(porFutureCat = ifelse(porFuture > 1, "Shortage", 
+                          ifelse(0.8 < porFuture & porFuture <= 1, "Threshold",
+                                 ifelse(0.5 <= porFuture & porFuture <= 0.8, "Ideal",
+                                        ifelse(0.5 > porFuture, "Surplus",NA))))
            )
-
-# Future Occupancy Rate GE
-census3$porFutureGE = census3$bicycle_ge / census3$space
-
-# Categorise into 4.
-## 2011 Occupancy Rate GE
-census3 = 
-  census3 %>%
-    mutate(porFutureGECat = ifelse(porFutureGE > 1, "Shortage", 
-                          ifelse(0.8 < porFutureGE & porFutureGE <= 1, "Threshold",
-                                 ifelse(0.5 <= porFutureGE & porFutureGE <= 0.8, "Ideal",
-                                        ifelse(0.5 > porFutureGE, "Surplus",NA))))
-           )
-
-census3$porFutureGDCat = factor(census3$porFutureGDCat, 
-                levels = c("Surplus","Ideal","Threshold","Shortage"))
-
-census3$porFutureGECat = factor(census3$porFutureGECat, 
-                levels = c("Surplus","Ideal","Threshold","Shortage"))
 
 census3
 ```
@@ -634,406 +512,129 @@ levels(census3$porFutureCat)
 msoa = left_join(msoa,census3, by = c("msoa" = "dmsoa"))
 ```
 
-# Set Up
-```{r}
-display.brewer.pal(n = 11, name = "RdYlBu") 
-brewer.pal(n = 11, name = "RdYlBu") 
-
-BCGcol = c( "#73d87d", "#368cd3", "#FEC44F", "#ff3b40")
-col_pocu = c("#4575B4", "#74ADD1", "#FEE090", "#D73027")
-```
-
 # Figures
-
-### Figure x Facet map of current and growth nos of cyclist
+## Set Up
 ```{r}
-tm_shape(msoa) +
-  tm_polygons(col = c("bicycle","GrowthNosGE"),
-              style = "fixed",
-              breaks = c(0,10,10^2,10^3,10^4,21982),
-              palette = brewer.pal(n = 5, name = "YlOrRd"),
-              title = c("Current Number of\nCycle Commuters'\nArrival",
-                        "Growth Number of\nCycle Commuters'\nArrival"),
-              )+
-  tm_layout(legend.title.size = 0.9,
-            legend.text.size = 0.5,
-            legend.position = c("right","bottom"),
-            ) +
-    tm_facets(sync = TRUE, ncol = 2)
+BCGcol = c("#368cd3", "#73d87d", "#ffff01", "#ff3b40")
+col_pocu = c("#368cd3", "#73d87d", "#ffff01" ,"#ff3b40")
 
-
-sum(msoa$all) #3145728
-sum(msoa$bicycle) #143182
-sum(msoa$bicycle)/sum(msoa$all)*100 #4.551633
-sum(msoa$bicycle_future) #613945.6
-sum(msoa$bicycle_future) - sum(msoa$bicycle) #470763.6
-sum(msoa$bicycle_future)/sum(msoa$all)*100 #19.5168
-19.5168/4.551633
 ```
 
-### Figure x Facet map of current and future share of cyclist
+
+### Figure 10 Destination Based Spatial Distribution of Current Cycle Commuter Share
 ```{r}
-# Select colors from a palette.
-display.brewer.all(colorblindFriendly = TRUE) # display all colorblind-friendly colors
-
-
-msoa$CurrentSharePct = msoa$CurrentShare*100 #Create new column
+get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75))
 
 tm_shape(msoa) +
-  tm_polygons(col = c("CurrentSharePct"),
+  tm_polygons(col = "CurrentShare",
               style = "fixed",
-              breaks = c(0,2,4,6,9,15),
-              palette = brewer.pal(n = 5, name = "PuBu"),
-              title = c("Current Share of\nCycle Commuter"),
-              legend.format=list(fun=function(x) paste0(formatC(x, digits=0, format="f"), "%"))
-              )+
-  tm_layout(legend.title.size = 0.8,
-            legend.text.size = 0.7,
-            legend.position = c("right","bottom"),
-            ) 
+              breaks = c(0, 0.02,0.04,0.06,0.09,0.15),
+              legend.hist = TRUE,
+              palette = get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75)),
+              title = "Current Share \n of Cycle Commuter")+
+  tm_layout(legend.outside = TRUE)+
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
 
-msoa = msoa[-c(which(colnames(msoa)=="CurrentSharePct" ))] # Delete created column 
+```
 
+### Figure 11 Destination Based Spatial Distribution of Future Cycle Commuter Share
+```{r}
+tm_shape(msoa) +
+  tm_polygons(col = "FutureShare",
+              style = "fixed",
+              breaks = c(0.11, 0.19,0.22,0.24,0.27,0.35),
+              legend.hist = TRUE,
+              palette = get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75)),
+              title = "Future Share \n of Cycle Commuter")+
+  tm_layout(legend.outside = TRUE) +
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
+```
+
+### Figure 15 Destination Based Spatial Distribution of Growth Cycle Commuter Share
+```{r}
+tm_shape(msoa) +
+  tm_polygons(col = "Growth",
+              style = "fixed",
+              breaks = c(0.06, 0.16, 0.18, 0.20, 0.24, 0.33),
+              legend.hist = TRUE,
+              palette = get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75)),
+              title = "Growth Share \n of Cycle Commuter")+
+  tm_layout(legend.outside = TRUE) +
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
+
+```
+
+### Figure 16 Scatter Plot of Growth and Current Share of Cycle Commuter
+```{r}
+ggplot(census3, aes(x = CurrentShare, y = Growth)) +
+  geom_point(aes(color = BCG), size = 1) +
+  scale_colour_manual(values=BCGcol) + 
+  geom_line(aes(x = mean(CurrentShare))) +
+  geom_line(aes(y = mean(Growth))) +
+  labs(colour = "Mode Share Matrix Quadrants")+
+  labs(y="Growth Share of Cycle Commuter", x = "Current Share of Cycle Commuter")
+
+mean(census3$CurrentShare)*100 #3.563695
+mean(census3$Growth)*100 #19.50014
+```
+
+### Figure 16-1 Scatter Plot of Growth and Current Share of Cycle Commuter - Growth Amount Vesion
+```{r}
+BCGcol = c("#368cd3", "#73d87d", "#ffff01", "#ff3b40")
+
+ggplot(census3, aes(x = CurrentShare, y = GrowthNos)) +
+  geom_point(aes(color = BCGNos), size = 1) +
+  scale_colour_manual(values=BCGcol) + 
+  geom_line(aes(x = mean(CurrentShare))) +
+  geom_line(aes(y = mean(GrowthNos))) +
+  labs(colour = "Mode Share Matrix Quadrants")+
+  labs(y="Growth Amount of Cycle Commuter", x = "Current Share of Cycle Commuter")
+
+mean(census3$CurrentShare)*100 #3.563695
+mean(census3$GrowthNos) #478.905
 ```
 
 ### Figure 16-1-1 Scatter Plot of Growth and Current Share of Cycle Commuter - Growth Amount Vesion Log scale
-```{r,fig.width = 10, fig.asp = 1}
-test = ggplot(census3, aes(x = CurrentShare, y = GrowthNos)) +
-  geom_point(aes(color = BCGNos), size = 1.2, show.legend = FALSE) +
-  scale_colour_manual(values=BCGcol) + 
-  labs(colour = "Mode Share Matrix Quadrants")+
-  labs(y="Growth Amount of Cycle Commuter", x = "Current Commuter Cycling Mode Share")+
-  scale_x_continuous(labels = scales::percent_format(accuracy = 1))
+```{r}
+BCGcol = c("#368cd3", "#73d87d", "#ffff01", "#ff3b40")
 
-test + scale_y_continuous(trans = 'log10')+ 
+test = ggplot(census3, aes(x = CurrentShare, y = GrowthNos)) +
+  geom_point(aes(color = BCGNos), size = 1) +
+  scale_colour_manual(values=BCGcol) + 
   geom_line(aes(x = mean(CurrentShare))) +
   geom_line(aes(y = mean(GrowthNos))) +
-  geom_text(aes(x = 0.13, y = 550, label = "Mean value = 478", family = "sans")) +
-  geom_text(aes(x = 0.035, y = 25000, label = "Mean value = 3.5%", family = "sans")) +
-  geom_text(aes(x = 0.06, y = 100, label = "Achieved", family = "sans")) +
-  geom_text(aes(x = 0.06, y = 1500, label = "Maturing", family = "sans")) +
-  geom_text(aes(x = 0.01, y = 1500, label = "Promising", family = "sans")) +
-  geom_text(aes(x = 0.01, y = 100, label = "Problematic", family = "sans")) 
+  labs(colour = "Mode Share Matrix Quadrants")+
+  labs(y="Growth Amount of Cycle Commuter", x = "Current Share of Cycle Commuter")
+
+mean(census3$CurrentShare)*100 #3.563695
+mean(census3$GrowthNos) #478.905
+
+test + scale_y_continuous(trans = 'log10')
 ```
 
 ### Figure 18 Spatial Distribution of BCG Categories
 ```{r}
 tm_shape(msoa) +
+  tm_polygons(col = "BCG", palette = BCGcol,
+              title = "Mode Share\nMatrix Quadrants")+
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
+
+```
+
+### Figure 18-1 Spatial Distribution of BCG Categories
+```{r}
+tm_shape(msoa) +
   tm_polygons(col = "BCGNos", palette = BCGcol,
               title = "Mode Share\nMatrix Quadrants")+
-  tm_layout(legend.title.size = 1,
-            legend.text.size = 0.75,
-            legend.position = c("right","bottom"),
-            ) 
-```
-
-### Figure 22 Spatial Distribution of Cycle Parking Supply
-```{r}
-tm_shape(msoa) +
-  tm_polygons(col = "space",
-              style = "fixed",
-              breaks = c(0, 100, 300, 600, 1000, 1500, 3010),
-              palette = brewer.pal(n = 5, name = "BuGn"),
-              title = "Parking Supply")+
-  tm_layout(legend.title.size = 1,
-            legend.text.size = 0.75,
-            legend.position = c("right","bottom"),
-            ) 
-
-display.brewer.all(colorblindFriendly = TRUE) # display all colorblind-friendly colors
-display.brewer.pal(n = 5, name = "RdYlBu") # Pick 2nd, 4th, 6th and 11th.
-
-tm_shape(msoa) +
-  tm_polygons(col = c("CurrentSharePct"),
-              style = "fixed",
-              breaks = c(0,2,4,6,9,15),
-              palette = brewer.pal(n = 5, name = "PuBu"),
-              title = c("Current Share of\nCycle Commuter"),
-              legend.format=list(fun=function(x) paste0(formatC(x, digits=0, format="f"), "%"))
-              )+
-  tm_layout(legend.title.size = 0.8,
-            legend.text.size = 0.7,
-            legend.position = c("right","bottom"),
-            ) 
-```
-
-### Stats for Parking Supply
-```{r}
-sum(msoa$bicycle) #143182
-
-# Obtain area of each MSOA
-msoa$area = st_area(msoa)
-
-# TOP MSOAS
-# Select MSOAs with more than 1000 cycle parkings
-msoa %>%
-  as.data.frame()%>%
-  select(msoa, space)%>%
-  arrange(desc(space))%>%
-  filter(space>1000)%>% 
-  nrow()#13
-# These are 13 MSOAs
-
-msoa %>%
-  as.data.frame()%>%
-  select(msoa, space,area)%>%
-  arrange(desc(space))%>%
-  filter(space>1000)%>%
-  select(space)%>%
-  sum()/sum(msoa$space)*100 #13.9742 
-# Total of cycle parking at these MSOAs account for 14% of all cycle parkings in Greater London.
-
-msoa %>%
-  as.data.frame()%>%
-  select(msoa, space,area)%>%
-  arrange(desc(space))%>%
-  filter(space>1000)%>%
-  select(area)%>%
-  sum()/sum(msoa$area)*100 #1.472863  
-# Total of area of these MSOAs account for 1% of Greater London area.
-
-# BOTTOM MSOAS
-# Select MSOAs with less than 100 cycle parkings
-msoa %>%
-  as.data.frame()%>%
-  select(msoa, space)%>%
-  arrange(desc(space))%>%
-  filter(space<100)%>% 
-  nrow()#579
-# These are 579 MSOAs
-
-msoa %>%
-  as.data.frame()%>%
-  select(msoa, space,area)%>%
-  arrange(desc(space))%>%
-  filter(space<100)%>%
-  select(space)%>%
-  sum()/sum(msoa$space)*100 #17.61514 
-# Total of cycle parking at these MSOAs account for 14% of all cycle parkings in Greater London.
-
-msoa %>% 
-  as.data.frame()%>%
-  select(msoa, space,area)%>%
-  arrange(desc(space))%>%
-  filter(space<100)%>%
-  select(area)%>%
-  sum()/sum(msoa$area)*100 #67.19098   
-# Total of area of these MSOAs account for 67% of Greater London area.
-
-msoa = msoa[-c(which(colnames(msoa)=="area" ))] # Delete created column 
-```
-
-### Figure 29 Spatial Distribution of Parking Occupancy Category for Current Scenario
-```{r}
-tm_shape(msoa) +
-  tm_polygons(col = "porCurrentCat", 
-              palette = col_pocu,
-              title = "Current\nParking\nOccupancy")+
-  tm_layout(legend.title.size = 1,
-            legend.text.size = 0.75,
-            legend.position = c("right","bottom"),
-            ) 
-
-tm_shape(msoa) +
-  tm_polygons(col = "porFutureGDCat", 
-              palette = col_pocu,
-              title = "Future GoDutch\nParking\nOccupancy")+
-  tm_layout(legend.title.size = 1,
-            legend.text.size = 0.75,
-            legend.position = c("right","bottom"),
-            ) 
-
-tm_shape(msoa) +
-  tm_polygons(col = "porFutureGECat", 
-              palette = col_pocu,
-              title = "Future\nGovernment\nTarget (Equity)\nParking\nOccupancy")+
-  tm_layout(legend.title.size = 1,
-            legend.text.size = 0.75,
-            legend.position = c("right","bottom"),
-            ) 
-
-tm_shape(msoa) +
-  tm_polygons(col = "porCurrent", 
-              style = "fixed",
-              breaks = c(0, 0.5, 0.8, 1, 2, 10, 1000),
-              palette = get_brewer_pal("Spectral", n = 6, contrast = c(0, 0.75)),
-              title = "Current\nParking\nOccupancy")+
-  tm_layout(legend.title.size = 1,
-            legend.text.size = 0.75,
-            legend.position = c("right","bottom"),
-            ) 
-```
-### Figure x Number of cyclists destined to each category of parking occupancy
-```{r,fig.width = 5, fig.asp = 0.7}
-ggplot(census3,aes(fill=porCurrentCat, x = porCurrentCat, y = bicycle)) +
-  geom_bar( stat="identity")+
-  scale_fill_manual(values=col_pocu)+
-  labs(y="No. of Commuter by Bicycle", x = "Parking Occupancy Category")
-
-# Statistics of the number of cyclists destined to each occupancy rate category
-census3 %>%
-  group_by(porCurrentCat)%>%
-  summarise(bicycle = sum(bicycle))%>%
-  mutate(pct = bicycle/sum(bicycle)*100)
-
-census3 %>%
-  filter(space > 0)%>%
-  select(porCurrent, bicycle, space,porCurrentCat)%>%
-  summarise(mean= mean(porCurrent), sd=sd(porCurrent))
-```
-
-### BCG Growth Number version
-### Figure 31-1 Breakdown of Parking Occupancy Category based on No. of Cyclist for Current Scenario (left) and Future Scenario (right)
-### Figure 32-1 Percentage Breakdown of Parking Occupancy Category based on No. of Cyclist for Current Scenario (left) and Future Scenario (right)
-```{r,fig.width = 5, fig.asp = 0.7}
-# Current scenario
-tbd =
-  census3 %>%
-  group_by(BCGNos, porCurrentCat) %>%
-    summarise(count = n(), cyclists = sum(bicycle))
-
-# Count Stacked barchart
-ggplot(tbd, aes(fill=porCurrentCat, y=cyclists, x=BCGNos))  + 
-    geom_bar(position="stack", stat="identity")+
-  scale_fill_manual(values=col_pocu)+
-  labs(fill = "Parking\n Occupancy")+
-  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
-
-# Percent stacked barchart
-ggplot(tbd, aes(fill=porCurrentCat, y=cyclists, x=BCGNos))  + 
-    geom_bar(position="fill",  stat="identity", ) +
-  scale_fill_manual(values=col_pocu)+
-  labs(fill = "Parking\n Occupancy")+
-  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")+
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1))
-
-# Stats - No. of cyclists destined to each mode share matrix.
-census3 %>%
-  group_by(BCGNos)%>%
-  summarise(bicycle = sum(bicycle))%>%
-  mutate(pct = bicycle/sum(bicycle)*100)
-
-# Stats - BCG x POR
-tbd %>%
-  group_by(BCGNos)%>%
-  mutate(pct = cyclists/sum(cyclists)*100)
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
 
 ```
 
-```{r,fig.width = 5, fig.asp = 0.7}
-# Future scenario
-# Group by BCG and parking availability category based on GoDutch
-tbd =
-  census3 %>%
-  group_by(BCGNos, porFutureGDCat) %>%
-    summarise(count = n(), cyclists = sum(bicycle_future))
-
-# Count Stacked barchart
-ggplot(tbd, aes(fill=porFutureGDCat, y=cyclists, x=BCGNos))  + 
-    geom_bar(position="stack", stat="identity")+
-  scale_fill_manual(values=col_pocu)+
-  labs(fill = "Parking\n Occupancy")+
-  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
-
-# Percent stacked barchart
-ggplot(tbd, aes(fill=porFutureGDCat, y=cyclists, x=BCGNos))  + 
-    geom_bar(position="fill",  stat="identity", ) +
-  scale_fill_manual(values=col_pocu)+
-  labs(fill = "Parking\n Occupancy")+
-  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
-
-```
-
-### BCG Growth Number based on Govt Target Equity (GE) version
-### Figure 31-1 Breakdown of Parking Occupancy Category based on No. of Cyclist for Current Scenario (left) and Future Scenario (right)
-### Figure 32-1 Percentage Breakdown of Parking Occupancy Category based on No. of Cyclist for Current Scenario (left) and Future Scenario (right)
-```{r,fig.width = 5, fig.asp = 0.7}
-# Current scenario
-tbd =
-  census3 %>%
-  group_by(BCGNosGE, porCurrentCat) %>%
-    summarise(count = n(), cyclists = sum(bicycle))
-
-# Count Stacked barchart
-ggplot(tbd, aes(fill=porCurrentCat, y=cyclists, x=BCGNosGE))  + 
-    geom_bar(position="stack", stat="identity")+
-  scale_fill_manual(values=col_pocu)+
-  labs(fill = "Parking\n Occupancy")+
-  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
-
-# Percent stacked barchart
-ggplot(tbd, aes(fill=porCurrentCat, y=cyclists, x=BCGNosGE))  + 
-    geom_bar(position="fill",  stat="identity", ) +
-  scale_fill_manual(values=col_pocu)+
-  labs(fill = "Parking\n Occupancy")+
-  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
-
-# Stats - No. of cyclists destined to each mode share matrix.
-census3 %>%
-  group_by(BCGNosGE)%>%
-  summarise(bicycle = sum(bicycle))%>%
-  mutate(pct = bicycle/sum(bicycle)*100)
-
-# Stats - BCG x POR
-tbd %>%
-  group_by(BCGNosGE)%>%
-  mutate(pct = cyclists/sum(cyclists)*100)
-
-```
-
-```{r,fig.width = 5, fig.asp = 0.7}
-# Future scenario
-# Group by BCG and parking availability category based on GE
-tbd =
-  census3 %>%
-  group_by(BCGNosGE, porFutureGECat) %>%
-    summarise(count = n(), cyclists = sum(bicycle_ge))
-
-# Count Stacked barchart
-ggplot(tbd, aes(fill=porFutureGECat, y=cyclists, x=BCGNosGE))  + 
-    geom_bar(position="stack", stat="identity")+
-  scale_fill_manual(values=col_pocu)+
-  labs(fill = "Parking\n Occupancy")+
-  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
-
-# Percent stacked barchart
-ggplot(tbd, aes(fill=porFutureGECat, y=cyclists, x=BCGNosGE))  + 
-    geom_bar(position="fill",  stat="identity", ) +
-  scale_fill_manual(values=col_pocu)+
-  labs(fill = "Parking\n Occupancy")+
-  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
-
-```
-## Color setting
-### Revise colors for mode share matrix.
-Reference:
-https://www.datanovia.com/en/blog/the-a-z-of-rcolorbrewer-palette/
-```{r}
-BCGcol # Current colors
-barplot(c(5,5,5,5), col=BCGcol) # Display colors blue, green, yellow and red
-
-# Select colors from a palette.
-display.brewer.all(colorblindFriendly = TRUE) # display all colorblind-friendly colors
-display.brewer.pal(n = 12, name = "Paired") # Pick 4th, 2nd, 6th and 11th.
-BCGcol = brewer.pal(n = 12, name = "Paired")
-BCGcol = BCGcol[c(4,2,11,6)]
-barplot(c(5,5,5,5), col=BCGcol) # Check
-```
-
-### Revise colors for parking occupancy category.
-```{r}
-col_pocu # Current colors
-barplot(c(5,5,5,5), col=col_pocu) # Display colors blue, green, yellow and red
-
-# Select colors from a palette.
-display.brewer.all(colorblindFriendly = TRUE) # display all colorblind-friendly colors
-display.brewer.pal(n = 12, name = "Paired") 
-display.brewer.pal(n = 8, name = "Dark2") 
-
-col_pocu = brewer.pal(n = 8, name = "Dark2")
-col_pocu = col_pocu[c(3,5,2,4)]
-barplot(c(5,5,5,5), col=col_pocu) # Check
-```
 
 ### Figure 21 Breakdown of Parking Space by No. of Cycle Commuter (left) and Area (right)
 ```{r}
@@ -1041,7 +642,7 @@ barplot(c(5,5,5,5), col=col_pocu) # Check
 census3 = left_join(census3, area, by = c("dmsoa" = "msoa"))
 ```
 
-```{r, fig.width = 5, fig.asp = 0.8}
+```{r}
 # Categorise into 6 ranges.
 tbd= 
   census3 %>%
@@ -1072,7 +673,6 @@ tbd2$area_kmsq = as.numeric(tbd2$area_kmsq)
 
 # Size in terms of cyclist
 (511+ 21666 )/ 143182  #0.1548868 by small numbers
-
 sum(tbd2$bicycle)
 45138 / 143182 #0.3152491
 
@@ -1091,7 +691,19 @@ ggplot(tbd2,aes(x=space2, y = area_kmsq)) +
   labs(y="Area (sq.km)", x = "Parking Space")
 ```
 
-
+### Figure 22 Spatial Distribution of Cycle Parking Supply
+```{r}
+tm_shape(msoa) +
+  tm_polygons(col = "space",
+              style = "fixed",
+              breaks = c(0, 134, 176, 217, 270, 336, 420, 508, 718, 1074, 3010),
+              palette = get_brewer_pal("Spectral", n = 10, contrast = c(0, 0.75)),
+              legend.hist = TRUE,
+              title = "Parking Supply")+
+  tm_layout(legend.outside = TRUE) +
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
+```
 ### Figure 25 Spatial Distribution of Current Parking Space Demand
 ```{r}
 tm_shape(msoa) +
@@ -1148,6 +760,17 @@ tm_shape(msoa) +
 
 ```
 
+### Figure 29 Spatial Distribution of Parking Occupancy Category for Current Scenario
+```{r}
+tm_shape(msoa) +
+  tm_polygons(col = "porCurrentCat", 
+              palette = col_pocu,
+              title = "Current \n Parking Occupancy")+
+  tm_compass(position = c("left", "bottom"))+
+  tm_scale_bar(position = c("left", "bottom"))
+
+```
+
 ### Figure 30 Spatial Distribution of Parking Occupancy Category for Future Scenario
 ```{r}
 tm_shape(msoa) +
@@ -1159,17 +782,29 @@ tm_shape(msoa) +
 
 ```
 
-### BCG Growth share version
 ### Figure 31 Breakdown of Parking Occupancy Category based on No. of Cyclist for Current Scenario (left) and Future Scenario (right)
 ### Figure 32 Percentage Breakdown of Parking Occupancy Category based on No. of Cyclist for Current Scenario (left) and Future Scenario (right)
-```{r,fig.width = 5, fig.asp = 0.7}
-# Current scenario
+```{r}
 tbd =
   census3 %>%
   group_by(BCG, porCurrentCat) %>%
     summarise(count = n(), cyclists = sum(bicycle))
 
-# Count Stacked barchart
+# Charts by No of MSOA
+# Stacked barchart
+ggplot(tbd, aes(fill=porCurrentCat, y=count, x=BCG))  + 
+    geom_bar(position="stack", stat="identity")+
+  scale_fill_manual(values=col_pocu)+
+  labs(fill = "Parking\n Occupancy")+
+  labs(y="No. of MSOA", x = "BCG Category")
+
+# Percent stacked barchart
+ggplot(tbd, aes(fill=porCurrentCat, y=count, x=BCG))  + 
+    geom_bar(position="fill",  stat="identity", ) +
+  scale_fill_manual(values=col_pocu)
+
+# Charts by No of MSOA
+# Stacked barchart
 ggplot(tbd, aes(fill=porCurrentCat, y=cyclists, x=BCG))  + 
     geom_bar(position="stack", stat="identity")+
   scale_fill_manual(values=col_pocu)+
@@ -1182,18 +817,31 @@ ggplot(tbd, aes(fill=porCurrentCat, y=cyclists, x=BCG))  +
   scale_fill_manual(values=col_pocu)+
   labs(fill = "Parking\n Occupancy")+
   labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
-
 ```
 
-```{r,fig.width = 5, fig.asp = 0.7}
-# Future scenario
+```{r}
 # Group by BCG and parking availability category based on GoDutch
 tbd =
   census3 %>%
   group_by(BCG, porFutureCat) %>%
     summarise(count = n(), cyclists = sum(bicycle_future))
 
-# Count Stacked barchart
+
+# Charts by No of LSOA
+# Stacked barchart
+ggplot(tbd, aes(fill=porFutureCat, y=count, x=BCG))  + 
+    geom_bar(position="stack", stat="identity")+
+  scale_fill_manual(values=col_pocu)+
+  labs(fill = "Parking\n Occupancy")+
+  labs(y="No. of MSOA", x = "BCG Category")
+
+# Percent stacked barchart
+ggplot(tbd, aes(fill=porFutureCat, y=count, x=BCG))  + 
+    geom_bar(position="fill",  stat="identity", ) +
+  scale_fill_manual(values=col_pocu)
+
+# Charts by No of Cyclists
+# Stacked barchart
 ggplot(tbd, aes(fill=porFutureCat, y=cyclists, x=BCG))  + 
     geom_bar(position="stack", stat="identity")+
   scale_fill_manual(values=col_pocu)+
@@ -1207,11 +855,11 @@ ggplot(tbd, aes(fill=porFutureCat, y=cyclists, x=BCG))  +
   labs(fill = "Parking\n Occupancy")+
   labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
 
+col_pocu = c("#368cd3", "#73d87d", "#ffff01" ,"#ff3b40")
 ```
 
-
 ### Figure 33 Scatter Plot of Parking Space and No. of Cyclist by MSOA for Current Scenario 
-```{r,fig.width = 10, fig.asp = 0.25}
+```{r}
 ggplot(census3, 
        aes(x = bicycle, 
            y = space,
@@ -1240,7 +888,7 @@ ggplot(census3,
   labs(y="Parking Capacity", x = "Current No. of Cycle Commuter")
 ```
 
-```{r,fig.width = 10, fig.asp = 0.25}
+```{r}
 ggplot(census3, 
        aes(x = bicycle, 
            y = space,
@@ -1269,8 +917,8 @@ ggplot(census3,
   labs(y="Parking Capacity", x = "Current No. of Cycle Commuter")
 ```
 
-### Figure 33-1 Scatter Plot of Parking Space and No. of Cyclist by MSOA for Current Scenario LOG SCALE! - Growth Share Version
-```{r,fig.width = 10, fig.asp = 0.25}
+### Figure 33-1 Scatter Plot of Parking Space and No. of Cyclist by MSOA for Current Scenario LOG SCALE!
+```{r}
 test = ggplot(census3, 
        aes(x = bicycle, 
            y = space,
@@ -1302,12 +950,11 @@ test + scale_x_continuous(trans = 'log10') +  scale_y_continuous(trans = 'log10'
 
 ```
 
-### Figure 33-1-1 Scatter Plot of Parking Space and No. of Cyclist by MSOA for Current Scenario LOG SCALE! - Growth Number Version
-```{r,fig.width = 10, fig.asp = 0.25}
+```{r}
 test = ggplot(census3, 
        aes(x = bicycle, 
            y = space,
-           color = BCGNos)
+           color = BCG)
        )+
   geom_point(size = 1) +
   scale_colour_manual(values=BCGcol) +
@@ -1328,7 +975,7 @@ test = ggplot(census3,
               size=0.5) + # Cyclist:Parking=1:2
   xlim(0,1000)+
   ylim(0,500)+
-  facet_wrap( ~ BCGNos, ncol=4)+
+  facet_wrap( ~ BCG, ncol=4)+
   labs(y="Parking Capacity", x = "Current No. of Cycle Commuter")
 
 test + scale_x_continuous(trans = 'log10') +  scale_y_continuous(trans = 'log10')
@@ -1336,7 +983,7 @@ test + scale_x_continuous(trans = 'log10') +  scale_y_continuous(trans = 'log10'
 
 
 ### Figure 34 Scatter Plot of Parking Space and No. of Cyclist by MSOA for Future Scenario
-```{r,fig.width = 10, fig.asp = 0.25}
+```{r}
 # GoDutch - Plot provision of parking per BCG.
 ggplot(census3, 
        aes(x = bicycle_future, 
@@ -1366,7 +1013,7 @@ ggplot(census3,
   labs(y="Parking Capacity", x = "Future No. of Cycle Commuter")
 ```
 
-```{r,fig.width = 10, fig.asp = 0.25}
+```{r}
 # GoDutch - Plot provision of parking per BCG.
 ggplot(census3, 
        aes(x = bicycle_future, 
@@ -1396,8 +1043,8 @@ ggplot(census3,
   labs(y="Parking Capacity", x = "Future No. of Cycle Commuter")
 ```
 
-### Figure 34-1 Scatter Plot of Parking Space and No. of Cyclist by MSOA for Future Scenario - Growth Share Version
-```{r,fig.width = 10, fig.asp = 0.25}
+### Figure 34-1 Scatter Plot of Parking Space and No. of Cyclist by MSOA for Future Scenario
+```{r}
 # GoDutch - Plot provision of parking per BCG.
 test = ggplot(census3, 
        aes(x = bicycle_future, 
@@ -1429,14 +1076,12 @@ test = ggplot(census3,
 test + scale_x_continuous(trans = 'log10') +  scale_y_continuous(trans = 'log10')
 ```
 
-
-### Figure 34-1-1 Scatter Plot of Parking Space and No. of Cyclist by MSOA for Future Scenario - Growth Number Version
-```{r,fig.width = 10, fig.asp = 0.25}
+```{r}
 # GoDutch - Plot provision of parking per BCG.
 test = ggplot(census3, 
        aes(x = bicycle_future, 
            y = space,
-           color = BCGNos)
+           color = BCG)
        )+
   geom_point(size = 1) +
   scale_colour_manual(values=BCGcol) +
@@ -1457,265 +1102,9 @@ test = ggplot(census3,
               size=0.5) + # Cyclist:Parking=1:2
   xlim(0,1000)+
   ylim(0,500)+
-  facet_wrap( ~ BCGNos, ncol=4)+
+  facet_wrap( ~ BCG, ncol=4)+
   labs(y="Parking Capacity", x = "Future No. of Cycle Commuter")
 
 test + scale_x_continuous(trans = 'log10') +  scale_y_continuous(trans = 'log10')
-```
-
-# Government Target Equity 
-### Figure 16-1-1 Scatter Plot of Growth and Current Share of Cycle Commuter - Growth Amount Vesion Log scale
-```{r,fig.width = 10, fig.asp = 1}
-test = ggplot(census3, aes(x = CurrentShare, y = GrowthNosGE)) +
-  geom_point(aes(color = BCGNosGE), size = 1) +
-  scale_colour_manual(values=BCGcol) + 
-  geom_line(aes(x = mean(CurrentShare))) +
-  geom_line(aes(y = mean(GrowthNosGE))) +
-  labs(colour = "Mode Share Matrix Quadrants")+
-  labs(y="Growth Amount of Cycle Commuter", x = "Current Share of Cycle Commuter")+
-  geom_label(label = "Mean value = 478",
-             x = 0.14,
-             y = 450
-             )+
-  scale_x_continuous(labels = scales::percent_format(accuracy = 1))
-
-mean(census3$CurrentShare) #0.03563695
-mean(census3$GrowthNosGE) #101.5944
-
-test + scale_y_continuous(trans = 'log10')
-
-test = ggplot(census3, aes(x = CurrentShare, y = GrowthNosGE)) +
-  geom_point(aes(color = BCGNosGE), size = 1.2, show.legend = FALSE) +
-  scale_colour_manual(values=BCGcol) + 
-  labs(colour = "Mode Share Matrix Quadrants")+
-  labs(y="Growth Amount of Cycle Commuter", x = "Current Commuter Cycling Mode Share")+
-  scale_x_continuous(labels = scales::percent_format(accuracy = 1))
-
-test + scale_y_continuous(trans = 'log10')+ 
-  geom_line(aes(x = mean(CurrentShare))) +
-  geom_line(aes(y = mean(GrowthNosGE))) +
-  geom_text(aes(x = 0.13, y = 115, label = "Mean value = 102", family = "sans")) +
-  geom_text(aes(x = 0.035, y = 7500, label = "Mean value = 3.5%", family = "sans")) +
-  geom_text(aes(x = 0.06, y = 30, label = "Achieved", family = "sans")) +
-  geom_text(aes(x = 0.06, y = 400, label = "Maturing", family = "sans")) +
-  geom_text(aes(x = 0.01, y = 400, label = "Promising", family = "sans")) +
-  geom_text(aes(x = 0.01, y = 30, label = "Problematic", family = "sans")) 
-
-```
-
-### Figure 18 Spatial Distribution of BCG Categories
-```{r}
-tm_shape(msoa) +
-  tm_polygons(col = "BCGNosGE", palette = BCGcol,
-              title = "Mode Share\nMatrix Quadrants")+
-  tm_layout(legend.title.size = 1,
-            legend.text.size = 0.75,
-            legend.position = c("right","bottom"),
-            ) 
-```
-
-# ARCHIVE NOT IN USE
-```{r}
-
-# Extract current and growth no. of cyclists
-msoa1_1 = msoa[c("msoa","bicycle")] 
-msoa1_2 = msoa[c("msoa","GrowthNos")]
-
-# Add new column, current or growth
-msoa1_1$cat = "current" 
-msoa1_2$cat = "growth"
-
-# Rename bicycle and GrowthNos columns
-msoa1_1$Nos = msoa1_1$bicycle
-msoa1_2$Nos = msoa1_2$GrowthNos
-
-msoa1_1 = msoa1_1[c("msoa","Nos","cat","geometry")]
-msoa1_2 = msoa1_2[c("msoa","Nos","cat","geometry")]
-
-# Combine two data frames
-msoa2 = rbind(msoa1_1,msoa1_2)
-
-# plot
-tm_shape(msoa2) +
-  tm_polygons(col = "Nos",
-              style = "fixed",
-              breaks = c(0,10,10^2,10^3,10^4,21982),
-              title = "Number of\nCycle Commuters'\nArrival",
-              palette = get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75)),
-              )+
-  tm_layout(legend.title.size = 0.9,
-            legend.text.size = 0.7,
-            panel.labels=c("Current No. of ","Growth"),
-            panel.label.color = "black",
-            panel.label.size=1
-            ) +
-  tm_facets(by = c("cat"), ncol = 2)
-```
-
-### Figure x Current Number of Cycle Commuters' Arrival
-```{r}
-tm_shape(msoa) +
-  tm_polygons(col = "bicycle",
-              style = "fixed",
-              breaks = c(0,10,100,1000,10000,13053),
-              palette = get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75)),
-              title = "Current Number of\nCycle Commuters'\nArrival",
-              )+
-  tm_layout(legend.title.size = 0.9,
-            legend.text.size = 0.7,
-            legend.position = c("right","bottom"),
-            )
-```
-
-### Figure x Future Number of Cycle Commuters' Arrival
-```{r}
-tm_shape(msoa) +
-  tm_polygons(col = "bicycle_future",
-              style = "fixed",
-              breaks = c(0,10,10^2,10^3,10^4,35035),
-              palette = get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75)),
-              title = "Future Number of\nCycle Commuters'\nArrival",
-              )+
-  tm_layout(legend.title.size = 0.9,
-            legend.text.size = 0.7,
-            legend.position = c("right","bottom"),
-            )
-
-min(msoa$bicycle_future) #34.61217
-max(msoa$bicycle_future) #35034.31
-```
-
-### Figure x Growth Number of Cycle Commuters' Arrival
-```{r}
-tm_shape(msoa) +
-  tm_polygons(col = "GrowthNos",
-              style = "fixed",
-              breaks = c(0,10,10^2,10^3,10^4,21982),
-              palette = get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75)),
-              title = "Growth Number of\nCycle Commuters'\nArrival",
-              )+
-  tm_layout(legend.title.size = 0.9,
-            legend.text.size = 0.7,
-            legend.position = c("right","bottom"),
-            )
-
-min(msoa$GrowthNos) #31.61217
-max(msoa$GrowthNos) #21981.31
-```
-
-### Figure 11 Destination Based Spatial Distribution of Future Cycle Commuter Share
-```{r}
-msoa$FutureSharePct = msoa$FutureShare*100 #Create new column
-
-tm_shape(msoa) +
-  tm_polygons(col = "FutureSharePct",
-              style = "fixed",
-              breaks = c(0, 2,4,6,9,15,19,22,24,27,35),
-              palette = get_brewer_pal("Spectral", n = 10, contrast = c(0, 0.75)),
-              title = "Future Share of\nCycle Commuter",
-              legend.format=list(fun=function(x) paste0(formatC(x, digits=0, format="f"), "%"))
-              )+
-  tm_layout(legend.title.size = 0.9,
-            legend.text.size = 0.7,
-            legend.position = c("right","bottom"),
-            )
-
-msoa = msoa[-c(which(colnames(msoa)=="FutureSharePct" ))] # Delete created column 
-
-sum(msoa$bicycle_future) - sum(msoa$bicycle) #470763.6  
-
-```
-
-
-
-### Figure 15 Destination Based Spatial Distribution of Growth Cycle Commuter Share
-```{r}
-tm_shape(msoa) +
-  tm_polygons(col = "Growth",
-              style = "fixed",
-              breaks = c(0.06, 0.16, 0.18, 0.20, 0.24, 0.33),
-              legend.hist = TRUE,
-              palette = get_brewer_pal("Spectral", n = 5, contrast = c(0, 0.75)),
-              title = "Growth Share \n of Cycle Commuter")+
-  tm_layout(legend.outside = TRUE) +
-  tm_compass(position = c("left", "bottom"))+
-  tm_scale_bar(position = c("left", "bottom"))
-
-```
-
-### Figure 15-1 Destination Based Spatial Distribution of Growth Nos Cycle Commuter Share
-```{r}
-tm_shape(msoa) +
-  tm_polygons(col = "GrowthNos",
-              title = "Growth Number \n of Cycle Commuter")+
-  tm_layout(legend.outside = TRUE) +
-  tm_compass(position = c("left", "bottom"))+
-  tm_scale_bar(position = c("left", "bottom"))
-
-
-```
-
-### Figure 15-1-1 Destination Based Spatial Distribution of Growth Nos Cycle Commuter Share LOG SCALE!
-```{r}
-tm_shape(msoa) +
-  tm_polygons(col = "GrowthNos",
-              style = "log10_pretty", 
-              title = "Growth Number \n of Cycle Commuter")+
-  tm_layout(legend.outside = TRUE) +
-  tm_compass(position = c("left", "bottom"))+
-  tm_scale_bar(position = c("left", "bottom"))
-
-```
-
-```{r}
-tm_shape(msoa) +
-  tm_polygons(col = "GrowthNos",
-              style = "log10", 
-              title = "Growth Number \n of Cycle Commuter")+
-  tm_layout(legend.outside = TRUE) +
-  tm_compass(position = c("left", "bottom"))+
-  tm_scale_bar(position = c("left", "bottom"))
-
-```
-
-### Figure 16 Scatter Plot of Growth and Current Share of Cycle Commuter
-```{r,fig.width = 10, fig.asp = 0.75}
-ggplot(census3, aes(x = CurrentShare, y = Growth)) +
-  geom_point(aes(color = BCG), size = 1) +
-  scale_colour_manual(values=BCGcol) + 
-  geom_line(aes(x = mean(CurrentShare))) +
-  geom_line(aes(y = mean(Growth))) +
-  labs(colour = "Mode Share Matrix Quadrants")+
-  labs(y="Growth Share of Cycle Commuter", x = "Current Share of Cycle Commuter")+
-  geom_label(label = "Mean value = 0.19",
-             x = 0.14,
-             y = 0.2
-             )+
-    geom_label(label = "Mean value = 0.03",
-             x = 0.05,
-             y = 0.31
-             )
-
-mean(census3$CurrentShare)*100 #3.563695
-mean(census3$Growth)*100 #19.50014
-```
-
-### Figure 16-1 Scatter Plot of Growth and Current Share of Cycle Commuter - Growth Amount Vesion
-```{r,fig.width = 10, fig.asp = 0.75}
-census3$CurrentSharePct = census3$CurrentShare*100 #Create new column
-
-ggplot(census3, aes(x = CurrentSharePct, y = GrowthNos)) +
-  geom_point(aes(color = BCGNos), size = 1) +
-  scale_colour_manual(values=BCGcol) + 
-  geom_line(aes(x = mean(CurrentSharePct))) +
-  geom_line(aes(y = mean(GrowthNos))) +
-  labs(colour = "Mode Share Matrix Quadrants")+
-  labs(y="Growth Amount of Cycle Commuter", x = "Current Share of Cycle Commuter")
-
-mean(census3$CurrentShare)*100 #3.563695
-mean(census3$GrowthNos) #478.905
-
-census3 = census3[-c(which(colnames(census3)=="CurrentSharePct" ))] # Delete created column 
-
 ```
 
