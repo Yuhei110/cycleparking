@@ -24,6 +24,7 @@ library(sf) # for working with vector file.
 ```
 
 ## Read me
+This is before cleaning up. It contains both go dutch scenario and government target scenario. Also some plots that are not used in the paper.
 ### input data
 census.rda: A census data of 2011 subsetting by Greater London.
 route.rda: route data obtained from PCT.
