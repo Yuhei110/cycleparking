@@ -2,9 +2,6 @@
 title: "cycleparking"
 author: "Yuhei Ito"
 date: "2020/10/7"
-output:
-  html_document: default
-  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -25,38 +22,20 @@ library(RColorBrewer) # for choosing color.
 
 ## Read me
 ### input data
-census.rda: A census data of 2011 subsetting by Greater London.
+census.rda: Greater London's census data of 2011.
 route.rda: route data obtained from PCT.
 parking.rda: parking data merged from CID and OSM.
 lsoa_msoa.rda: LSOA and MSOA link.
 
 ## Load data
 ```{r}
-# Clear R environment.
-rm(list = ls())
-
-# Load census data.
-census = paste(getwd(),"/data/census.rda", sep = "")
-load(census)
-
-# Load route data.
-route = paste(getwd(),"/data/route.rda", sep = "")
-load(route)
-
-# Load parking data.
-parking = paste(getwd(),"/data/parking.rda", sep = "")
-load(parking)
-
-# Load area data.
-area = paste(getwd(),"/data/area.rda", sep = "")
-load(area)
-
-# Load lsoa_msoa data.
-lsoa_msoa = paste(getwd(),"/data/lsoa_msoa.rda", sep = "")
-load(lsoa_msoa)
-
-# MSOA shapefile.
-msoa = st_read("C:\\Users\\yuhei\\Documents\\R\\cycleparking\\data\\msoa.shp")
+rm(list = ls()) # Clear R environment.
+load(file="data/census.rda")    # Load census data.
+load(file="data/route.rda")     # Load route data.
+load(file="data/parking.rda")   # Load parking data.
+load(file="data/area.rda")      # Load area data.
+load(file="data/lsoa_msoa.rda") # Load lsoa_msoa data.
+msoa = st_read("data/msoa.shp") # MSOA shape file.
 ```
 
 ## Join MSOA code to census
@@ -101,7 +80,7 @@ any(is.na(route)) #FALSE, successful.
 
 # CREATE JOIN ID.
 # 1. Create join ID for Origin = geo_code1, Destination = geo_code2, ID = OD
-route12 = route
+route12 = route%>%as.data.frame()
 route12$id = paste(route$geo_code1, route$geo_code2)
 nrow(route12) #308782
 
@@ -135,13 +114,14 @@ census2 =
   census2 %>%
   select(-id)
 
-any(is.na(census2)) #TRUE
-  census2 %>%
-  filter(is.na(rf_dist_km))
 ```
 
 ## Check census data.
 ```{r}
+any(is.na(census2)) #TRUE
+  census2 %>%
+  filter(is.na(rf_dist_km))
+  
 # Check if there is any No fixed place data on Census. -> No.
 nrow(census2) #601902 rows.
 
@@ -423,20 +403,39 @@ barplot(c(5,5,5,5), col=BCGcol) # Check
 
 ### Map of current and growth nos of cyclist
 ```{r}
-tm_shape(msoa) +
-  tm_polygons(col = c("bicycle","GrowthNosGE"),
+# current cyclists
+gp=
+  tm_shape(msoa) +
+  tm_polygons(col = "bicycle",
               style = "fixed",
               breaks = c(0,10,10^2,10^3,10^4,21982),
               palette = brewer.pal(n = 5, name = "YlOrRd"),
-              title = c("Current Number of\nCycle Commuters'\nArrival",
-                        "Growth Number of\nCycle Commuters'\nArrival"),
-              )+
+              title = "Current Number of Cycle Commuters' Arrival",
+                    )+
   tm_layout(legend.title.size = 0.9,
-            legend.text.size = 0.5,
-            legend.position = c("right","bottom"),
-            ) +
-    tm_facets(sync = TRUE, ncol = 2)
+            legend.text.size = 0.7,
+            legend.outside = TRUE,
+            legend.outside.position = "bottom",
+            ) 
 
+tmap_save(gp, file="output/fig2a_CurrentNoCyclists.png", dpi =600, width=3, height=3.5)
+
+# growth cyclists
+gp=
+  tm_shape(msoa) +
+  tm_polygons(col = "GrowthNosGE",
+              style = "fixed",
+              breaks = c(0,10,10^2,10^3,10^4,21982),
+              palette = brewer.pal(n = 5, name = "YlOrRd"),
+              title = "Growth Number of Cycle Commuters' Arrival",
+                    )+
+  tm_layout(legend.title.size = 0.9,
+            legend.text.size = 0.7,
+            legend.outside = TRUE,
+            legend.outside.position = "bottom",
+            ) 
+
+tmap_save(gp, file="output/fig2b_IncreaseNoCyclists.png", dpi =600, width=3, height=3.5)
 
 sum(msoa$all) #3145728
 sum(msoa$bicycle) #143182
@@ -452,21 +451,43 @@ display.brewer.all(colorblindFriendly = TRUE) # display all colorblind-friendly 
 
 msoa$CurrentSharePct = msoa$CurrentShare*100 #Create new column
 
-tm_shape(msoa) +
+gp= 
+  tm_shape(msoa) +
   tm_polygons(col = c("CurrentSharePct"),
               style = "fixed",
               breaks = c(0,2,4,6,9,15),
               palette = brewer.pal(n = 5, name = "PuBu"),
-              title = c("Current Share of\nCycle Commuter"),
+              title = c("Current Share of Cycle Commuter"),
               legend.format=list(fun=function(x) paste0(formatC(x, digits=0, format="f"), "%"))
               )+
-  tm_layout(legend.title.size = 0.8,
+  tm_layout(legend.title.size = 0.9,
             legend.text.size = 0.7,
-            legend.position = c("right","bottom"),
+            legend.outside = TRUE,
+            legend.outside.position = "bottom",
             ) 
+
+tmap_save(gp, file="output/fig2c_PctCyclists.png", dpi =600, width=3, height=3.5)
 
 msoa = msoa[-c(which(colnames(msoa)=="CurrentSharePct" ))] # Delete created column 
 
+```
+
+### Spatial Distribution of Cycle Parking Supply
+```{r}
+gp= 
+  tm_shape(msoa) +
+  tm_polygons(col = "space",
+              style = "fixed",
+              breaks = c(0, 100, 300, 600, 1000, 1500, 3010),
+              palette = brewer.pal(n = 5, name = "BuGn"),
+              title = "Parking Supply")+
+  tm_layout(legend.title.size = 0.9,
+            legend.text.size = 0.7,
+            legend.outside = TRUE,
+            legend.outside.position = "bottom",
+            ) 
+
+tmap_save(gp, file="output/fig2d_ParkingSupply.png", dpi =600, width=3, height=3.5)
 ```
 
 ### Scatter Plot of Growth and Current Share of Cycle Commuter - Growth Amount Vesion Log scale
@@ -481,7 +502,8 @@ test = ggplot(census3, aes(x = CurrentShare, y = GrowthNosGE)) +
   labs(y="Growth Amount of Cycle Commuter", x = "Current Commuter Cycling Mode Share")+
   scale_x_continuous(labels = scales::percent_format(accuracy = 1))
 
-test + scale_y_continuous(trans = 'log10')+ 
+gp=
+  test + scale_y_continuous(trans = 'log10')+ 
   geom_line(aes(x = mean(CurrentShare))) +
   geom_line(aes(y = mean(GrowthNosGE))) +
   geom_text(aes(x = 0.13, y = 115, label = "Mean value = 102", family = "sans")) +
@@ -490,17 +512,23 @@ test + scale_y_continuous(trans = 'log10')+
   geom_text(aes(x = 0.06, y = 400, label = "Maturing", family = "sans")) +
   geom_text(aes(x = 0.01, y = 400, label = "Promising", family = "sans")) +
   geom_text(aes(x = 0.01, y = 30, label = "Problematic", family = "sans")) 
+
+ggsave(file="output/fig3_ScatterPlot.png", plot=gp, dpi =600, width=7, height=7)
 ```
 
 ### Spatial Distribution of BCG Categories
 ```{r}
-tm_shape(msoa) +
+gp=
+  tm_shape(msoa) +
   tm_polygons(col = "BCGNosGE", palette = BCGcol,
               title = "Mode Share\nMatrix Quadrants")+
   tm_layout(legend.title.size = 1,
             legend.text.size = 0.75,
             legend.position = c("right","bottom"),
             ) 
+
+tmap_save(gp, file="output/fig4_ModeShareMatrix.png", dpi =600, width=6, height=5)
+
 ```
 
 ### Spatial Distribution of Cycle Parking Supply
