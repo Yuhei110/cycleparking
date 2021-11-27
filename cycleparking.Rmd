@@ -1,7 +1,7 @@
 ---
 title: "cycleparking"
 author: "Yuhei Ito"
-date: "2020/10/7"
+date: "2021/11/27"
 ---
 
 ```{r setup, include=FALSE}
@@ -22,10 +22,11 @@ library(RColorBrewer) # for choosing color.
 
 ## Read me
 ### input data
-census.rda: Greater London's census data of 2011.
-route.rda: route data obtained from PCT.
-parking.rda: parking data merged from CID and OSM.
-lsoa_msoa.rda: LSOA and MSOA link.
+census.rda: 2011 Greater London's LSOA level census data
+route.rda: route data obtained from PCT
+parking.rda: parking data merged from CID and OSM
+lsoa_msoa.rda: LSOA and MSOA link
+msoa: msoa shape file
 
 ## Load data
 ```{r}
