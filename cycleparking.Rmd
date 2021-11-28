@@ -614,31 +614,40 @@ msoa = msoa[-c(which(colnames(msoa)=="area" ))] # Delete created column
 
 ### Spatial Distribution of Parking Occupancy Category for Current Scenario
 ```{r}
-tm_shape(msoa) +
+gp=
+  tm_shape(msoa) +
   tm_polygons(col = "porCurrentCat", 
               palette = col_pocu,
-              title = "Current\nParking\nOccupancy")+
-  tm_layout(legend.title.size = 1,
-            legend.text.size = 0.75,
-            legend.position = c("right","bottom"),
+              title = "Current Parking Occupancy")+
+  tm_layout(legend.title.size = 0.9,
+            legend.text.size = 0.7,
+            legend.outside = TRUE,
+            legend.outside.position = "bottom",
             ) 
 
-tm_shape(msoa) +
-  tm_polygons(col = "porFutureGECat", 
-              palette = col_pocu,
-              title = "Future\nGovernment\nTarget (Equity)\nParking\nOccupancy")+
-  tm_layout(legend.title.size = 1,
-            legend.text.size = 0.75,
-            legend.position = c("right","bottom"),
-            ) 
+tmap_save(gp, file="output/fig5_1_ParkingOccupancyMap.png", dpi =600, width=3, height=3.5)
+
+
+# tm_shape(msoa) +
+#   tm_polygons(col = "porFutureGECat", 
+#               palette = col_pocu,
+#               title = "Future\nGovernment\nTarget (Equity)\nParking\nOccupancy")+
+#   tm_layout(legend.title.size = 1,
+#             legend.text.size = 0.75,
+#             legend.position = c("right","bottom"),
+#             ) 
 ```
 
 ### Number of cyclists destined to each category of parking occupancy
 ```{r,fig.width = 5, fig.asp = 0.7}
-ggplot(census3,aes(fill=porCurrentCat, x = porCurrentCat, y = bicycle)) +
+gp=
+  ggplot(census3,aes(fill=porCurrentCat, x = porCurrentCat, y = bicycle)) +
   geom_bar( stat="identity")+
   scale_fill_manual(values=col_pocu)+
-  labs(y="No. of Commuter by Bicycle", x = "Parking Occupancy Category")
+  labs(y="No. of Commuter by Bicycle", x = "Parking Occupancy Category")+
+  theme(legend.position = "None")
+
+ggsave(file="output/fig5_2_ParkingOccupancy.png", plot=gp, dpi =600, width=3, height=3)
 
 # Statistics of the number of cyclists destined to each occupancy rate category
 census3 %>%
@@ -661,18 +670,27 @@ tbd =
     summarise(count = n(), cyclists = sum(bicycle))
 
 # Count Stacked barchart
-ggplot(tbd, aes(fill=porCurrentCat, y=cyclists, x=BCGNosGE))  + 
+gp=
+  ggplot(tbd, aes(fill=porCurrentCat, y=cyclists, x=BCGNosGE))  + 
     geom_bar(position="stack", stat="identity")+
   scale_fill_manual(values=col_pocu)+
   labs(fill = "Parking\n Occupancy")+
-  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
+  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")+
+  theme(legend.position = "None")
+
+ggsave(file="output/fig6_1_ParkingOccupancyCount.png", plot=gp, dpi =600, width=3, height=3)
+
 
 # Percent stacked barchart
-ggplot(tbd, aes(fill=porCurrentCat, y=cyclists, x=BCGNosGE))  + 
+gp= 
+  ggplot(tbd, aes(fill=porCurrentCat, y=cyclists, x=BCGNosGE))  + 
     geom_bar(position="fill",  stat="identity", ) +
   scale_fill_manual(values=col_pocu)+
   labs(fill = "Parking\n Occupancy")+
-  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")
+  labs(y="No. of Cyclist", x = "Mode Share Matrix Quadrants")+
+  theme(legend.position = "None")
+
+ggsave(file="output/fig6_2_ParkingOccupancyPct.png", plot=gp, dpi =600, width=3, height=3)
 
 # Stats - No. of cyclists destined to each mode share matrix.
 census3 %>%
