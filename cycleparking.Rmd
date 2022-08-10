@@ -405,38 +405,46 @@ barplot(c(5,5,5,5), col=BCGcol) # Check
 ### Map of current and growth nos of cyclist
 ```{r}
 # current cyclists
-gp=
+gp2a=
   tm_shape(msoa) +
   tm_polygons(col = "bicycle",
               style = "fixed",
               breaks = c(0,10,10^2,10^3,10^4,21982),
               palette = brewer.pal(n = 5, name = "YlOrRd"),
-              title = "Current Number of Cycle Commuters' Arrival",
+              title = "",
+              lwd = 0.2
                     )+
-  tm_layout(legend.title.size = 0.9,
-            legend.text.size = 0.7,
-            legend.outside = TRUE,
-            legend.outside.position = "bottom",
+  tm_layout(legend.title.size = 0.2,
+            legend.text.size = 0.2,
+            legend.outside = FALSE,
+            legend.outside.position = c("right","bottom"),
+            main.title.size = 0.4,
+            frame = FALSE,
+            main.title = "Current number of cycle commuters"
             ) 
 
-tmap_save(gp, file="output/fig2a_CurrentNoCyclists.png", dpi =600, width=3, height=3.5)
+tmap_save(gp2a, file="output/fig2a_CurrentNoCyclists.png", dpi =600, width=3, height=3.5)
 
 # growth cyclists
-gp=
+gp2b=
   tm_shape(msoa) +
   tm_polygons(col = "GrowthNosGE",
               style = "fixed",
               breaks = c(0,10,10^2,10^3,10^4,21982),
               palette = brewer.pal(n = 5, name = "YlOrRd"),
-              title = "Growth Number of Cycle Commuters' Arrival",
+              title = "",
+              lwd = 0.2
                     )+
-  tm_layout(legend.title.size = 0.9,
-            legend.text.size = 0.7,
-            legend.outside = TRUE,
-            legend.outside.position = "bottom",
+  tm_layout(legend.title.size = 0.2,
+            legend.text.size = 0.2,
+            legend.outside = FALSE,
+            legend.outside.position = c("right","bottom"),
+            main.title.size = 0.4,
+            frame = FALSE,
+            main.title = "Possible growth in cycle commuters"
             ) 
 
-tmap_save(gp, file="output/fig2b_IncreaseNoCyclists.png", dpi =600, width=3, height=3.5)
+tmap_save(gp2b, file="output/fig2b_IncreaseNoCyclists.png", dpi =600, width=3, height=3.5)
 
 sum(msoa$all) #3145728
 sum(msoa$bicycle) #143182
@@ -452,22 +460,26 @@ display.brewer.all(colorblindFriendly = TRUE) # display all colorblind-friendly 
 
 msoa$CurrentSharePct = msoa$CurrentShare*100 #Create new column
 
-gp= 
+gp2c= 
   tm_shape(msoa) +
   tm_polygons(col = c("CurrentSharePct"),
               style = "fixed",
               breaks = c(0,2,4,6,9,15),
               palette = brewer.pal(n = 5, name = "PuBu"),
-              title = c("Current Share of Cycle Commuter"),
+              title = "",
+              lwd = 0.2,
               legend.format=list(fun=function(x) paste0(formatC(x, digits=0, format="f"), "%"))
               )+
-  tm_layout(legend.title.size = 0.9,
-            legend.text.size = 0.7,
-            legend.outside = TRUE,
-            legend.outside.position = "bottom",
+  tm_layout(legend.title.size = 0.2,
+            legend.text.size = 0.2,
+            legend.outside = FALSE,
+            legend.outside.position = c("right","bottom"),
+            main.title.size = 0.4,
+            frame = FALSE,
+            main.title = c("Current Cycle modal share")
             ) 
 
-tmap_save(gp, file="output/fig2c_PctCyclists.png", dpi =600, width=3, height=3.5)
+tmap_save(gp2c, file="output/fig2c_PctCyclists.png", dpi =600, width=3, height=3.5)
 
 msoa = msoa[-c(which(colnames(msoa)=="CurrentSharePct" ))] # Delete created column 
 
@@ -475,20 +487,27 @@ msoa = msoa[-c(which(colnames(msoa)=="CurrentSharePct" ))] # Delete created colu
 
 ### Spatial Distribution of Cycle Parking Supply
 ```{r}
-gp= 
+gp2d= 
   tm_shape(msoa) +
   tm_polygons(col = "space",
               style = "fixed",
               breaks = c(0, 100, 300, 600, 1000, 1500, 3010),
               palette = brewer.pal(n = 5, name = "BuGn"),
-              title = "Parking Supply")+
-  tm_layout(legend.title.size = 0.9,
-            legend.text.size = 0.7,
-            legend.outside = TRUE,
-            legend.outside.position = "bottom",
+              title = "",
+              lwd = 0.2)+
+  tm_layout(legend.title.size = 0.2,
+            legend.text.size = 0.2,
+            legend.outside = FALSE,
+            legend.outside.position = c("right","bottom"),
+            main.title.size = 0.4,
+            frame = FALSE,
+            main.title = "Current cycle parking spaces"
             ) 
 
-tmap_save(gp, file="output/fig2d_ParkingSupply.png", dpi =600, width=3, height=3.5)
+tmap_save(gp2d, file="output/fig2d_ParkingSupply.png", dpi =600, width=3, height=3.5)
+gp2 <- tmap_arrange(gp2a, gp2b, gp2c, gp2d, outer.margins = 0)
+tmap_save(gp2, file="output/fig2_All.png", dpi =600, width=3, height=3.5)
+
 ```
 
 ### Scatter Plot of Growth and Current Share of Cycle Commuter - Growth Amount Vesion Log scale
@@ -500,7 +519,7 @@ test = ggplot(census3, aes(x = CurrentShare, y = GrowthNosGE)) +
   geom_point(aes(color = BCGNosGE), size = 1.2, show.legend = FALSE) +
   scale_colour_manual(values=BCGcol) + 
   labs(colour = "Mode Share Matrix Quadrants")+
-  labs(y="Growth Amount of Cycle Commuter", x = "Current Commuter Cycling Mode Share")+
+  labs(y="Possible growth in cycle commuters", x = "Current cycling commuter modal share")+
   scale_x_continuous(labels = scales::percent_format(accuracy = 1))
 
 gp=
@@ -519,16 +538,17 @@ ggsave(file="output/fig3_ScatterPlot.png", plot=gp, dpi =600, width=7, height=7)
 
 ### Spatial Distribution of BCG Categories
 ```{r}
-gp=
+gp4=
   tm_shape(msoa) +
   tm_polygons(col = "BCGNosGE", palette = BCGcol,
               title = "Mode Share\nMatrix Quadrants")+
   tm_layout(legend.title.size = 1,
             legend.text.size = 0.75,
             legend.position = c("right","bottom"),
+            frame = FALSE
             ) 
 
-tmap_save(gp, file="output/fig4_ModeShareMatrix.png", dpi =600, width=6, height=5)
+tmap_save(gp4, file="output/fig4_ModeShareMatrix.png", dpi =600, width=6, height=5)
 
 ```
 
@@ -614,20 +634,38 @@ msoa = msoa[-c(which(colnames(msoa)=="area" ))] # Delete created column
 
 ### Spatial Distribution of Parking Occupancy Category for Current Scenario
 ```{r}
-gp=
+gp5a=
   tm_shape(msoa) +
   tm_polygons(col = "porCurrentCat", 
               palette = col_pocu,
-              title = "Current Parking Occupancy")+
-  tm_layout(legend.title.size = 0.9,
-            legend.text.size = 0.7,
-            legend.outside = TRUE,
-            legend.outside.position = "bottom",
+              title = "",
+              lwd = 0.2)+
+  tm_layout(legend.title.size = 0.4,
+            legend.text.size = 0.4,
+            legend.outside = FALSE,
+            legend.outside.position = c("right","bottom"),
+            frame = FALSE
             ) 
 
-tmap_save(gp, file="output/fig5_1_ParkingOccupancyMap.png", dpi =600, width=3, height=3.5)
+tmap_save(gp5a, file="output/fig5_1_ParkingOccupancyMap.png", dpi =600, width=3, height=3.5)
 
 
+# gp2d= 
+#   tm_shape(msoa) +
+#   tm_polygons(col = "space",
+#               style = "fixed",
+#               breaks = c(0, 100, 300, 600, 1000, 1500, 3010),
+#               palette = brewer.pal(n = 5, name = "BuGn"),
+#               title = "",
+#               lwd = 0.2)+
+#   tm_layout(legend.title.size = 0.2,
+#             legend.text.size = 0.2,
+#             legend.outside = FALSE,
+#             legend.outside.position = c("right","bottom"),
+#             main.title.size = 0.4,
+#             frame = FALSE,
+#             main.title = "Current cycle parking spaces"
+#             ) 
 # tm_shape(msoa) +
 #   tm_polygons(col = "porFutureGECat", 
 #               palette = col_pocu,
@@ -640,14 +678,18 @@ tmap_save(gp, file="output/fig5_1_ParkingOccupancyMap.png", dpi =600, width=3, h
 
 ### Number of cyclists destined to each category of parking occupancy
 ```{r,fig.width = 5, fig.asp = 0.7}
-gp=
+gp5b=
   ggplot(census3,aes(fill=porCurrentCat, x = porCurrentCat, y = bicycle)) +
   geom_bar( stat="identity")+
   scale_fill_manual(values=col_pocu)+
-  labs(y="No. of Commuter by Bicycle", x = "Parking Occupancy Category")+
-  theme(legend.position = "None")
+  labs(y="No. of bicycle commuters", x = "Parking Occupancy Category")+
+  theme(legend.position = "None",
+        axis.text=element_text(size=6),
+        axis.title=element_text(size=8,face="bold")) 
 
-ggsave(file="output/fig5_2_ParkingOccupancy.png", plot=gp, dpi =600, width=3, height=3)
+ggsave(file="output/fig5_2_ParkingOccupancy.bmp", plot=gp5b, dpi =600, width=2.9, height=2.9)
+
+
 
 # Statistics of the number of cyclists destined to each occupancy rate category
 census3 %>%
